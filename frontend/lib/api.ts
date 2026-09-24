@@ -73,7 +73,7 @@ export type EventType =
   | "graduate"
   | "resumed";
 
-export type Config = { gmail_stub: boolean };
+export type Config = { gmail_stub: boolean; voice?: boolean; voice_problem?: string | null };
 
 export async function createSession(): Promise<{ state: SessionState; ui: UiEvent[]; config: Config }> {
   const r = await fetch(`${API_URL}/api/sessions`, { method: "POST" });

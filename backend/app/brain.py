@@ -13,6 +13,7 @@ recover right away.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -43,6 +44,26 @@ def _block_to_dict(block: Any) -> dict[str, Any] | None:
     if t == "redacted_thinking":
         return {"type": "redacted_thinking", "data": block.data}
     return block.model_dump(mode="json", exclude_none=True)
+
+
+def _repair_after_cancel(state: OnboardingState, said: str) -> None:
+    """Leave a valid, honest history after a turn is cut off mid-stream.
+
+    The assistant turn keeps only what was already said, and tool calls whose
+    results were never recorded are dropped (the API rejects a tool_use without a
+    matching tool_result). The voice layer later trims it further to what the user
+    actually heard.
+    """
+    text = said or "(cut off before saying anything)"
+    last = state.messages[-1] if state.messages else None
+    if last is None or last["role"] == "user":
+        state.messages.append({"role": "assistant", "content": [{"type": "text", "text": text}]})
+    elif not state.pending_tool_results:
+        kept = [b for b in last["content"] if b["type"] != "tool_use"]
+        if not any(b["type"] == "text" for b in kept):
+            kept.append({"type": "text", "text": text})
+        last["content"] = kept
+    state.transcript.append(Turn(role="agent", text=(said + "…") if said else "…", channel=state.channel))
 
 
 class Brain:
@@ -77,13 +98,23 @@ class Brain:
         *,
         user_text: str | None = None,
         event_text: str | None = None,
+        annotations: list[str] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Run one turn. Yields {"type": "delta"|"ui"|"done", ...} events for the client."""
+        """Run one turn. Yields {"type": "delta"|"ui"|"done", ...} events for the client.
+
+        `annotations` are voice-layer tags like "[4.2s silence]" or "[you were interrupted]".
+        The model sees them; the visible transcript doesn't.
+
+        If the consumer is cancelled mid-turn (barge-in, hangup), close this generator
+        (`await gen.aclose()`) before saving state: that repairs the history so the
+        next request is still valid.
+        """
         channel = state.channel
         if user_text is not None:
             orch.before_user_turn(state, user_text)
             state.transcript.append(Turn(role="user", text=user_text, channel=channel))
-            body = f"[{channel}] {user_text}"
+            tags = " ".join(annotations or [])
+            body = f"[{channel}] {tags + ' ' if tags else ''}{user_text}"
         else:
             body = f"[event: {event_text}]"
 
@@ -100,6 +131,7 @@ class Brain:
         state.pending_tool_results = []
 
         reply_parts: list[str] = []
+        spoken: list[str] = []  # every delta sent out, for repair after a cancel
         ui_events: list[dict[str, Any]] = []
         progressed = False
         t0 = time.perf_counter()
@@ -115,8 +147,10 @@ class Brain:
                             if ttft is None:
                                 ttft = time.perf_counter() - t0
                             if not round_text and reply_parts:
+                                spoken.append(" ")
                                 yield {"type": "delta", "text": " "}
                             round_text.append(event.text)
+                            spoken.append(event.text)
                             yield {"type": "delta", "text": event.text}
                     final = await stream.get_final_message()
 
@@ -161,6 +195,9 @@ class Brain:
 
                 state.pending_tool_results = results
                 break
+        except (asyncio.CancelledError, GeneratorExit):
+            _repair_after_cancel(state, "".join(spoken).strip())
+            raise
         except (anthropic.APIError, ValueError) as e:
             log.exception("LLM turn failed: %s", e)
             del state.messages[rollback_len:]

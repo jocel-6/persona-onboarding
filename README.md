@@ -2,14 +2,14 @@
 
 An adaptive voice + text onboarding agent. It learns four things (what to call the agent, what to call you, a connected Gmail, and what you need help with) through a conversation that feels like the first five minutes of using Persona, not a form.
 
-> Status: **Phase 0–1 done** (text brain, simulated call screen, Gmail stub). Voice (Phase 2), real Google sign-in (Phase 3), recap (Phase 4) and the eval harness (Phase 5) are next. See `Persona_Onboarding_Project_Plan.pdf` and `Persona_Onboarding_Technical_Design.pdf`.
+> Status: **Phases 0–2 built** (text brain, real voice calls, Gmail stub). Real Google sign-in (Phase 3), recap (Phase 4) and the eval harness (Phase 5) are next. See `Persona_Onboarding_Project_Plan.pdf` and `Persona_Onboarding_Technical_Design.pdf`.
 
 ## Run it locally
 
 Requires Python 3.12+ and Node 20+.
 
 ```bash
-cp .env.example .env            # add ANTHROPIC_API_KEY
+cp .env.example .env            # add ANTHROPIC_API_KEY (+ voice keys for real calls, see below)
 cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && cd ..
 cd frontend && npm install && cd ..
 ./dev.sh                        # backend :8000, frontend :3000
@@ -45,8 +45,34 @@ Voice and text share one brain, one prompt, and one history, which is what makes
 ### Graduation rule
 Offered once `help_topic` is known **and** at least one of `user_name` or `gmail`. It's always an offer. If declined, it isn't offered again for 3 turns. If the user asks to skip, they go immediately, and missing fields are picked up later.
 
+## Voice (Phase 2)
+
+**Cascaded, not speech-to-speech.** Speech-to-text → the same brain → text-to-speech. Speech-to-speech models (OpenAI Realtime, Gemini Live) hear tone natively and are a bit faster, but they'd mean a second, different brain on the call (Claude has no speech-to-speech model), a small fixed set of voices, and audio-in/audio-out turns that are hard to test. One brain is what makes a hangup continue seamlessly over text, and what lets the eval harness test calls in text.
+
+```
+browser mic ──WebRTC──▶ Deepgram STT ─▶ confidence tagger ─▶ user aggregator ─▶ BrainService ─▶ TTS ──WebRTC──▶ speaker
+                                         (unclear names)     (VAD, Smart Turn v3,  (orchestrator +              │
+                                                              backchannel filter,   Claude, as in text)          ▼
+                                                              silence timer)                          assistant aggregator
+                                                                                                      (what was actually heard)
+```
+
+- **Framework:** [Pipecat](https://github.com/pipecat-ai/pipecat) handles audio, WebRTC (browser ↔ server directly, no room service), VAD and turn-taking. Our brain plugs in as a custom processor (`backend/app/voice/call.py`), so the call and the chat share one state, one history, one prompt.
+- **Semantic turn detection:** Smart Turn v3 (runs locally, listens to the audio) decides whether you've finished: it responds fast after "I'm Sam." and waits after "I'm, uh…".
+- **Backchannel filtering** (`voice/turntaking.py`): while the agent is talking, "mhm", "yeah", "right" (≤3 words, all listening noises) are ignored; "wait", "no", "actually", "hold on" always cut in; anything else interrupts. When the agent isn't talking, "yeah" is an answer and starts a turn. The design suggested a ~400 ms duration threshold; VAD alone can't tell "mhm" from "wait", so the rule uses words instead, which interim transcripts deliver in ~200–300 ms.
+- **Barge-in:** the agent stops mid-word, and its message in the history is cut to what you actually heard (`[cut off here: the user interrupted]`), so it never assumes you heard the rest.
+- **Audio annotations** the model sees (never shown in the transcript): `[you were interrupted…]`, `[low transcription confidence: Maya]` (→ a light "Maya, like M-A-Y-A?"), and silence events.
+- **Silence:** after 5 s a single gentle check-in; after 10 s more, an offer to switch to text; then quiet (no nagging).
+- **Keyword boosting:** the agent's and user's names are sent to Deepgram as key terms.
+- **Streaming everywhere:** Claude streams tokens, TTS starts on the first sentence.
+- **Latency:** every voice turn logs end-of-turn → first token → first audio to `backend/data/latency.jsonl`. *(Numbers go here after live testing.)*
+- **Fallback:** no voice keys, or mic blocked → the call screen takes typed input instead, so the flow never breaks.
+
+### Voice bake-off
+Voice is picked with data (`backend/scripts/voices.py`): `list` shows real voices per provider; `render provider:voice …` has each read 8 test lines (greeting, question, empathy, excitement, dates/times, unusual names, a long sentence, "Got it.") and measures time to first audio; `listen.html` is a blind listening page for 3–5 friends; `score` merges their ratings into the table below. *(Scorecard goes here.)*
+
 ### What's simulated (and why)
-- **The phone call** runs in the browser. In Phase 1 you type into the call screen and the turns are labeled `voice`, so voice-mode behavior (short spoken replies, hangup handling) can be tested before real audio is wired up.
+- **The phone call** runs in the browser over WebRTC rather than a real phone number: no telephony vendor or number setup for reviewers, and the Gmail card can appear on screen mid-call.
 - **Google sign-in** is a clearly labeled dev stub (`GMAIL_STUB=1`) until Phase 3.
 
 ### Storage

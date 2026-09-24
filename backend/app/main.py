@@ -2,12 +2,14 @@
 
   POST   /api/sessions                  start a session (scripted opener, no model call)
   GET    /api/sessions/{id}             resume: state + transcript
-  POST   /api/sessions/{id}/messages    user typed or spoke something -> SSE stream
+  POST   /api/sessions/{id}/messages    user typed something -> SSE stream
   POST   /api/sessions/{id}/events      app event (call, hangup, Gmail, resume) -> SSE stream
   DELETE /api/sessions/{id}             forget the session
+  POST   /api/offer, PATCH /api/offer   WebRTC signaling for the voice call
 
 Stream events: {"type": "delta", "text"} while the agent talks, {"type": "ui", "ui": {...}}
-for screen changes, then {"type": "state", "state"} and {"type": "end"}.
+for screen changes, then {"type": "state", "state"} and {"type": "end"}. During a
+voice call the same messages arrive over the WebRTC data channel instead.
 """
 
 from __future__ import annotations
@@ -16,27 +18,24 @@ import asyncio
 import json
 import logging
 import random
-from collections import defaultdict
 from collections.abc import AsyncIterator
-from typing import Any, Literal
+from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import orchestrator as orch
-from .brain import Brain
-from .config import Settings
-from .state import DEFAULT_AGENT_NAME, OnboardingState, Turn
-from .store import SessionStore
+from . import runtime
+from .events import EventType, apply_event
+from .state import OnboardingState, Turn
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("persona.api")
 
-settings = Settings()
-store = SessionStore(settings.db_path)
-brain = Brain(settings)
-_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+settings = runtime.settings
+store = runtime.store
+brain = runtime.brain
 
 app = FastAPI(title="Persona onboarding")
 app.add_middleware(
@@ -53,27 +52,16 @@ OPENERS = [
     "Hey, nice to meet you! Let's start with the fun part: what do you want to call me?",
 ]
 
+# Events that, during a live voice call, should be spoken on the call rather than texted.
+SPOKEN_DURING_CALL = {"gmail_connected", "gmail_closed", "gmail_denied", "gmail_popup_opened", "graduate"}
+
 
 class MessageIn(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
 
 
 class EventIn(BaseModel):
-    type: Literal[
-        "name_skipped",
-        "call_accepted",
-        "call_declined",
-        "call_connected",
-        "call_missed",
-        "hangup",
-        "callback",
-        "gmail_popup_opened",
-        "gmail_connected",
-        "gmail_closed",
-        "gmail_denied",
-        "graduate",
-        "resumed",
-    ]
+    type: EventType
     data: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -94,27 +82,38 @@ def _sse_response(gen: AsyncIterator[str]) -> StreamingResponse:
     )
 
 
+def _config() -> dict[str, Any]:
+    problem = settings.voice_problem()
+    return {"gmail_stub": settings.gmail_stub, "voice": problem is None, "voice_problem": problem}
+
+
 async def _stream_turn(
     session_id: str,
     *,
     user_text: str | None = None,
-    event_text: str | None = None,
-    pre: list[dict[str, Any]] | None = None,
-    mutate=None,
+    event: EventIn | None = None,
 ) -> AsyncIterator[str]:
     """Serialize turns per session, run one, persist, and stream it out."""
-    async with _locks[session_id]:
+    spoken_on: Any = None
+    async with runtime.locks[session_id]:
         state = _load(session_id)
-        if mutate is not None:
-            event_text = mutate(state)
-        for ev in pre or []:
-            yield _sse({"type": "ui", "ui": ev})
-        if user_text is not None or event_text:
+        event_text = None
+        if event is not None:
+            event_text, ui = apply_event(state, event.type, event.data)
+            for ev in ui:
+                yield _sse({"type": "ui", "ui": ev})
+            if event.type in SPOKEN_DURING_CALL and state.call_status == "in_progress":
+                from .voice.call import active_calls
+
+                spoken_on = active_calls.get(session_id)
+        if spoken_on is None and (user_text is not None or event_text):
             async for ev in brain.run_turn(state, user_text=user_text, event_text=event_text):
                 yield _sse(ev)
         store.save(state)
         yield _sse({"type": "state", "state": state.public_view()})
         yield _sse({"type": "end"})
+    if spoken_on is not None and event_text:
+        await spoken_on.say_event(event_text)
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +123,7 @@ async def _stream_turn(
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "model": settings.llm_model, "gmail_stub": settings.gmail_stub}
+    return {"ok": True, "model": settings.llm_model, **_config()}
 
 
 @app.post("/api/sessions")
@@ -140,20 +139,19 @@ def create_session() -> dict[str, Any]:
     ]
     state.transcript.append(Turn(role="agent", text=opener, channel="text"))
     store.save(state)
-    return {
-        "state": state.public_view(),
-        "ui": [{"type": "name_suggestions", "names": names}],
-        "config": {"gmail_stub": settings.gmail_stub},
-    }
+    return {"state": state.public_view(), "ui": [{"type": "name_suggestions", "names": names}], "config": _config()}
 
 
 @app.get("/api/sessions/{session_id}")
 def get_session(session_id: str) -> dict[str, Any]:
-    return {"state": _load(session_id).public_view(), "config": {"gmail_stub": settings.gmail_stub}}
+    return {"state": _load(session_id).public_view(), "config": _config()}
 
 
 @app.delete("/api/sessions/{session_id}")
-def delete_session(session_id: str) -> dict[str, bool]:
+async def delete_session(session_id: str) -> dict[str, bool]:
+    from .voice.call import end_call
+
+    await end_call(session_id)
     store.delete(session_id)
     return {"ok": True}
 
@@ -167,112 +165,71 @@ async def post_message(session_id: str, body: MessageIn) -> StreamingResponse:
 @app.post("/api/sessions/{session_id}/events")
 async def post_event(session_id: str, body: EventIn) -> StreamingResponse:
     _load(session_id)
-    pre: list[dict[str, Any]] = []
+    if body.type == "hangup":
+        # Stop the audio pipeline first so a half-spoken turn can't race the text follow-up.
+        from .voice.call import end_call
 
-    def mutate(state: OnboardingState) -> str | None:
-        """Apply the event to state; return event text for the model, or None for no reply."""
-        t = body.type
+        await end_call(session_id)
+    return _sse_response(_stream_turn(session_id, event=body))
 
-        if t == "name_skipped":
-            if state.agent_name:
-                return None
-            state.agent_name = DEFAULT_AGENT_NAME
-            state.agent_name_defaulted = True
-            orch.add_event_turn(state, f"Skipped naming. Going by {DEFAULT_AGENT_NAME}.")
-            return (
-                f"the user tapped 'skip' on naming you, so you're {DEFAULT_AGENT_NAME} for now (they can rename you "
-                "anytime). Acknowledge in a few words and ask if they're up for a quick call or would rather text."
+
+# ---------------------------------------------------------------------------
+# Voice call signaling (WebRTC, browser <-> this server; no third-party room service)
+# ---------------------------------------------------------------------------
+
+_webrtc_handler: Any = None
+
+
+def _handler():
+    global _webrtc_handler
+    if _webrtc_handler is None:
+        from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCRequestHandler
+
+        _webrtc_handler = SmallWebRTCRequestHandler()
+    return _webrtc_handler
+
+
+@app.post("/api/offer")
+async def webrtc_offer(request: Request) -> dict[str, Any]:
+    problem = settings.voice_problem()
+    if problem:
+        raise HTTPException(503, f"voice unavailable: {problem}")
+    from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCRequest
+
+    from .voice.call import VoiceCall, end_call
+
+    body = await request.json()
+    req = SmallWebRTCRequest.from_dict(body)
+    session_id = str((req.request_data or {}).get("session_id") or "")
+    if not req.pc_id:
+        state = _load(session_id)
+        if state.call_status not in ("ringing", "in_progress"):
+            raise HTTPException(409, f"no call to connect (call_status={state.call_status})")
+        await end_call(session_id)  # one live call per session
+
+    async def on_connection(connection):
+        call = VoiceCall(session_id, connection)
+        asyncio.create_task(call.run())
+
+    answer = await _handler().handle_web_request(req, on_connection)
+    return answer or {}
+
+
+@app.patch("/api/offer")
+async def webrtc_ice(request: Request) -> dict[str, bool]:
+    from pipecat.transports.smallwebrtc.request_handler import IceCandidate, SmallWebRTCPatchRequest
+
+    body = await request.json()
+    patch = SmallWebRTCPatchRequest(
+        pc_id=body["pc_id"],
+        candidates=[
+            IceCandidate(
+                candidate=c["candidate"],
+                sdp_mid=c.get("sdp_mid", c.get("sdpMid")),
+                sdp_mline_index=c.get("sdp_mline_index", c.get("sdpMLineIndex")),
             )
-
-        if t in ("call_accepted", "callback"):
-            orch.start_call(state)
-            pre.append({"type": "ringing"})
-            return None
-
-        if t == "call_declined":
-            if state.call_status in ("ringing", "offered", "not_started"):
-                state.call_status = "declined"
-                state.channel = "text"
-                return "the user chose to keep texting instead of a call. No pushback; carry on here."
-            return None
-
-        if t == "call_connected":
-            state.call_status = "in_progress"
-            state.channel = "voice"
-            orch.add_event_turn(state, "Call connected")
-            if state.user_turns > 1 and state.filled():
-                return (
-                    "the call just connected again (a callback). Pick up exactly where you left off; don't restart "
-                    "or re-ask anything you already know."
-                )
-            return (
-                "the call just connected and the user picked up. Introduce yourself by name and open with one "
-                "curious, specific question as the director's note suggests. Don't ask for their name; they'll "
-                "usually offer it."
-            )
-
-        if t == "call_missed":
-            orch.end_call(state, "missed")
-            orch.add_event_turn(state, "Missed call")
-            pre.append({"type": "show_callback"})
-            return (
-                "you called but the user didn't pick up. Text them something like 'Missed you! No worries, we can do "
-                "it here.' and mention they can tap to call back anytime. Then carry on over text."
-            )
-
-        if t == "hangup":
-            if state.call_status != "in_progress":
-                return None
-            orch.end_call(state, "hangup")
-            orch.add_event_turn(state, "Call ended")
-            pre.append({"type": "show_callback"})
-            return (
-                "the call ended suddenly (the user hung up or it dropped) mid-conversation. You're now texting. Say "
-                "something like 'Looks like we got cut off! Want me to call back, or finish up here?' in your own "
-                "words, then continue from exactly where you stopped. Don't re-ask anything you already know."
-            )
-
-        if t == "gmail_popup_opened":
-            state.gmail_status = "popup_open"
-            return None
-
-        if t == "gmail_connected":
-            email = str(body.data.get("email") or "").strip()
-            google_name = str(body.data.get("name") or "").strip().split(" ")[0]
-            if google_name:
-                state.google_name = google_name
-            state.gmail_status = "connected"
-            state.gmail = email or "connected"
-            state.gmail_card_shown = False
-            state.turns_since_progress = 0
-            orch.add_event_turn(state, "Gmail connected")
-            pre.append({"type": "hide_gmail_card"})
-            return "the user just connected Gmail. Confirm it warmly in a few words, then continue."
-
-        if t in ("gmail_closed", "gmail_denied"):
-            state.gmail_status = "not_connected" if t == "gmail_closed" else "denied"
-            state.gmail_card_shown = False
-            pre.append({"type": "hide_gmail_card"})
-            return (
-                "the user closed the Google sign-in without connecting. No guilt: say they can connect it later, and "
-                "keep going."
-            )
-
-        if t == "graduate":
-            orch.graduate(state)
-            pre.append({"type": "graduated"})
-            return "the user tapped the button to start using Persona. Say a warm, one-line send-off."
-
-        if t == "resumed":
-            if state.graduated or not any(turn.role == "user" for turn in state.transcript):
-                return None
-            if state.call_status in ("in_progress", "ringing"):
-                orch.end_call(state, "hangup")
-                pre.append({"type": "show_callback"})
-            return (
-                "the user left and just came back (page refresh). Welcome them back briefly and remind them what you "
-                "were just talking about, then continue. Don't re-ask anything you already know."
-            )
-        return None
-
-    return _sse_response(_stream_turn(session_id, mutate=mutate, pre=pre))
+            for c in body.get("candidates", [])
+        ],
+    )
+    await _handler().handle_patch_request(patch)
+    return {"ok": True}

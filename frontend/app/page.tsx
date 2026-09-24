@@ -12,10 +12,13 @@ import {
   type StreamEvent,
   type UiEvent,
 } from "@/lib/api";
+import { startVoiceCall, type VoiceCall } from "@/lib/voice";
 
 const SESSION_KEY = "persona.session";
 const RING_TIMEOUT_MS = 20_000;
 const DEFAULT_CHIPS = ["Nova", "Juno", "Milo"];
+// When the agent ends the call (graduation, "can we text instead?"), let it finish its sentence.
+const END_AFTER_SPEECH_GRACE_MS = 1500;
 
 type CallView = "none" | "ringing" | "live";
 
@@ -36,6 +39,19 @@ export default function Onboarding() {
   const [doneDismissed, setDoneDismissed] = useState(false);
   const [debug, setDebug] = useState(false);
   const [latency, setLatency] = useState<{ ttft_ms: number | null; total_ms: number } | null>(null);
+
+  // Real voice call state (Phase 2). Without voice configured, calls fall back to typing.
+  const voiceRef = useRef<VoiceCall | null>(null);
+  const [voiceLive, setVoiceLive] = useState(false);
+  const [botSpeaking, setBotSpeaking] = useState(false);
+  const [userSpeaking, setUserSpeaking] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [callNote, setCallNote] = useState<string | null>(null);
+  const botSpeakingRef = useRef(false);
+  const endAfterSpeechRef = useRef(false);
+  const voiceTextRef = useRef("");
+  // Set below once finishVoice exists; lets handleUi/applyState end a voice call gracefully.
+  const requestEndAfterSpeechRef = useRef<(() => void) | null>(null);
 
   const queue = useRef<Promise<void>>(Promise.resolve());
   // Lets handleUi queue an event (e.g. ring after "yes, call me") without a dependency cycle.
@@ -66,7 +82,8 @@ export default function Onboarding() {
         setCallView("ringing");
         break;
       case "end_call":
-        setCallView("none");
+        if (voiceRef.current) requestEndAfterSpeechRef.current?.();
+        else setCallView("none");
         break;
       case "show_callback":
         setCallback(true);
@@ -82,9 +99,56 @@ export default function Onboarding() {
 
   const applyState = useCallback((s: SessionState) => {
     setSession(s);
-    if (s.call_status !== "in_progress") setCallView((v) => (v === "live" ? "none" : v));
+    if (s.call_status !== "in_progress") {
+      if (voiceRef.current) requestEndAfterSpeechRef.current?.();
+      else setCallView((v) => (v === "live" ? "none" : v));
+    }
     if (s.agent_name) setChips(null);
   }, []);
+
+  // ---- voice ---------------------------------------------------------
+
+  /** Close the voice connection without telling the server it was a hangup. */
+  const finishVoice = useCallback(async () => {
+    const v = voiceRef.current;
+    voiceRef.current = null;
+    endAfterSpeechRef.current = false;
+    setVoiceLive(false);
+    setBotSpeaking(false);
+    setUserSpeaking(false);
+    setCallView("none");
+    if (v) await v.hangUp();
+  }, []);
+
+  useEffect(() => {
+    requestEndAfterSpeechRef.current = () => {
+      if (endAfterSpeechRef.current) return;
+      endAfterSpeechRef.current = true;
+      // If the goodbye hasn't started playing yet, give it a moment; otherwise
+      // onBotSpeaking(false) finishes the call when it's done.
+      setTimeout(() => {
+        if (endAfterSpeechRef.current && !botSpeakingRef.current) void finishVoice();
+      }, END_AFTER_SPEECH_GRACE_MS);
+    };
+  }, [finishVoice]);
+
+  const handleVoiceEvent = useCallback(
+    (e: StreamEvent) => {
+      if (e.type === "delta") {
+        voiceTextRef.current += e.text;
+        setLive(voiceTextRef.current);
+      } else if (e.type === "ui") handleUi(e.ui);
+      else if (e.type === "done") setLatency(e.latency);
+      else if (e.type === "state") {
+        voiceTextRef.current = "";
+        applyState(e.state);
+        setLive(null);
+        setPendingUser(null);
+      }
+    },
+    [applyState, handleUi],
+  );
+
 
   const run = useCallback(
     (path: string, body: unknown) => {
@@ -186,6 +250,7 @@ export default function Onboarding() {
   }, [boot]);
 
   const reset = async () => {
+    await finishVoice();
     if (sessionId) await deleteSession(sessionId);
     setError(null);
     setCallOffer(false);
@@ -208,16 +273,48 @@ export default function Onboarding() {
     return () => clearTimeout(t);
   }, [callView, sendEvent]);
 
-  const answer = () => {
+  const answer = async () => {
     setCallView("live");
     setCallback(false);
-    void sendEvent("call_connected");
+    setCallNote(null);
+    setMuted(false);
+    if (!config.voice || !sessionId) {
+      void sendEvent("call_connected"); // typed call
+      return;
+    }
+    try {
+      voiceTextRef.current = "";
+      voiceRef.current = await startVoiceCall(sessionId, {
+        onEvent: handleVoiceEvent,
+        onUserTranscript: (text) => setPendingUser(text),
+        onBotSpeaking: (speaking) => {
+          botSpeakingRef.current = speaking;
+          setBotSpeaking(speaking);
+          if (!speaking && endAfterSpeechRef.current) void finishVoice();
+        },
+        onUserSpeaking: setUserSpeaking,
+        onDropped: () => {
+          if (!voiceRef.current) return;
+          voiceRef.current = null;
+          setVoiceLive(false);
+          setCallView("none");
+          void sendEvent("hangup");
+        },
+      });
+      setVoiceLive(true);
+    } catch {
+      // Mic blocked or voice server unreachable: keep the call going by typing.
+      voiceRef.current = null;
+      setCallNote("Couldn't use your microphone, so let's type on this call instead.");
+      void sendEvent("call_connected");
+    }
   };
   const declineRing = () => {
     setCallView("none");
     void sendEvent("call_declined");
   };
-  const hangUp = () => {
+  const hangUp = async () => {
+    await finishVoice();
     setCallView("none");
     void sendEvent("hangup");
   };
@@ -339,6 +436,12 @@ export default function Onboarding() {
           onDecline={declineRing}
           onHangUp={hangUp}
           onSay={sendMessage}
+          voice={voiceLive}
+          botSpeaking={botSpeaking}
+          userSpeaking={userSpeaking}
+          muted={muted}
+          onMute={() => { const m = !muted; setMuted(m); voiceRef.current?.setMuted(m); }}
+          note={callNote ?? (config.voice ? null : "Voice isn't set up on this server, so type to talk.")}
           onReady={session?.wrapping_up && !graduated ? () => sendEvent("graduate") : undefined}
           gmail={
             gmailCard ? (
@@ -513,6 +616,12 @@ function CallScreen({
   onDecline,
   onHangUp,
   onSay,
+  voice,
+  botSpeaking,
+  userSpeaking,
+  muted,
+  onMute,
+  note,
   onReady,
   gmail,
 }: {
@@ -525,6 +634,12 @@ function CallScreen({
   onDecline: () => void;
   onHangUp: () => void;
   onSay: (t: string) => void;
+  voice: boolean;
+  botSpeaking: boolean;
+  userSpeaking: boolean;
+  muted: boolean;
+  onMute: () => void;
+  note: string | null;
   onReady?: () => void;
   gmail: React.ReactNode;
 }) {
@@ -542,11 +657,21 @@ function CallScreen({
   return (
     <div className="call" role="dialog" aria-label={`Call with ${agentName}`}>
       <div className="call-inner">
-        <div className={`avatar ${view === "ringing" ? "ringing" : live ? "speaking" : ""}`}>
+        <div
+          className={`avatar ${view === "ringing" ? "ringing" : (voice ? botSpeaking : live) ? "speaking" : ""} ${
+            voice && userSpeaking ? "listening" : ""
+          }`}
+        >
           {agentName.slice(0, 1).toUpperCase()}
         </div>
         <h2>{agentName}</h2>
-        <p className="muted">{view === "ringing" ? "Incoming call…" : mmss}</p>
+        <p className="muted">
+          {view === "ringing"
+            ? "Incoming call…"
+            : voice
+              ? `${mmss} · ${muted ? "muted" : userSpeaking ? "listening…" : botSpeaking ? "speaking" : "your turn"}`
+              : mmss}
+        </p>
 
         {view === "ringing" ? (
           <div className="row center">
@@ -564,8 +689,16 @@ function CallScreen({
               {caption && <p>{caption}</p>}
             </div>
             {gmail}
-            <p className="stub-label">Phase 1: type to talk. Real voice comes in Phase 2.</p>
-            <Composer placeholder="Say something…" onSend={onSay} />
+            {voice ? (
+              <button className="secondary wide" onClick={onMute} aria-pressed={muted}>
+                {muted ? "Unmute" : "Mute"}
+              </button>
+            ) : (
+              <>
+                {note && <p className="stub-label">{note}</p>}
+                <Composer placeholder="Say something…" onSend={onSay} />
+              </>
+            )}
             {onReady && (
               <button className="primary wide" onClick={onReady}>
                 I&apos;m ready, let&apos;s go

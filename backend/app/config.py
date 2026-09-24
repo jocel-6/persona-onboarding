@@ -21,3 +21,36 @@ class Settings:
     frontend_origin: str = field(default_factory=lambda: os.getenv("FRONTEND_ORIGIN", "http://localhost:3000"))
     # Phase 1 stand-in for the real Google sign-in (Phase 3). Off in production.
     gmail_stub: bool = field(default_factory=lambda: os.getenv("GMAIL_STUB", "1") == "1")
+
+    # ---- Voice (Phase 2) ----
+    deepgram_api_key: str = field(default_factory=lambda: os.getenv("DEEPGRAM_API_KEY", ""))
+    stt_model: str = field(default_factory=lambda: os.getenv("STT_MODEL", "nova-3-general"))
+    # The voice layer: switching provider or voice is config only (tech design 8.1).
+    tts_provider: str = field(default_factory=lambda: os.getenv("TTS_PROVIDER", "cartesia"))  # cartesia | elevenlabs | openai
+    tts_voice_id: str = field(default_factory=lambda: os.getenv("TTS_VOICE_ID", ""))
+    tts_model: str = field(default_factory=lambda: os.getenv("TTS_MODEL", ""))
+    cartesia_api_key: str = field(default_factory=lambda: os.getenv("CARTESIA_API_KEY", ""))
+    elevenlabs_api_key: str = field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY", ""))
+    openai_api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
+    # Silence on the call: first check-in after this many seconds, then offer text after the second value.
+    silence_checkin_secs: float = field(default_factory=lambda: float(os.getenv("SILENCE_CHECKIN_SECS", "5")))
+    silence_offer_text_secs: float = field(default_factory=lambda: float(os.getenv("SILENCE_OFFER_TEXT_SECS", "10")))
+
+    def tts_key(self) -> str:
+        return {
+            "cartesia": self.cartesia_api_key,
+            "elevenlabs": self.elevenlabs_api_key,
+            "openai": self.openai_api_key,
+        }.get(self.tts_provider, "")
+
+    def voice_problem(self) -> str | None:
+        """Why real voice can't run, or None if it can. The UI falls back to typed calls."""
+        if not self.deepgram_api_key:
+            return "DEEPGRAM_API_KEY is not set"
+        if self.tts_provider not in ("cartesia", "elevenlabs", "openai"):
+            return f"unknown TTS_PROVIDER {self.tts_provider!r}"
+        if not self.tts_key():
+            return f"{self.tts_provider.upper()}_API_KEY is not set"
+        if self.tts_provider in ("cartesia", "elevenlabs") and not self.tts_voice_id:
+            return "TTS_VOICE_ID is not set (run scripts/voices.py to pick one)"
+        return None

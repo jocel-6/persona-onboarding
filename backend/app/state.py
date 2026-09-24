@@ -56,6 +56,10 @@ class OnboardingState(BaseModel):
 
     value_moment_done: bool = False
 
+    # Wrap-up: after they accept graduation, tailored starters + tips + "any questions?"
+    wrapping_up: bool = False
+    starter_suggestions: list[str] = Field(default_factory=list)
+
     graduation_offered: bool = False
     graduation_declined_at_turn: int | None = None
     graduated: bool = False

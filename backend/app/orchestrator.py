@@ -10,6 +10,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import zlib
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,6 +20,42 @@ from .state import DEFAULT_AGENT_NAME, OnboardingState, Turn
 GRADUATION_COOLDOWN_TURNS = 3
 STALL_TURNS = 3
 CHATTY_WORDS = 60
+
+# Ways into "what do you need?" without asking it. Ideas for the model to make
+# its own, not lines to read. Each session starts at a different one and moves on
+# a step each turn, so no two people get the same opener.
+DISCOVERY_ANGLES = (
+    "how their week has been going, and what's taken more energy than it should",
+    "what's piling up for them right now: inbox, calendar, errands, family logistics, or work",
+    "what they'd hand off first if they had a clone for a day",
+    "something that slipped through the cracks for them recently",
+    "what a normal morning or workday looks like for them, and where it goes sideways",
+    "the thing they keep meaning to get to but never do",
+    "the small stuff that quietly eats their time",
+    "what's coming up soon that's on their mind, good or dreaded",
+)
+
+
+# The shape of the line, varied independently of the topic.
+DISCOVERY_MOVES = (
+    "a playful hypothetical",
+    "a warm, specific guess about their life that they can correct",
+    "a quick either/or they can pick from (or reject)",
+    "a one-line peek at what you're good at, then turn it back to them",
+    "a light, curious observation, then a question",
+)
+
+
+def _seed(state: OnboardingState) -> int:
+    return zlib.crc32(state.session_id.encode())  # stable across restarts, unlike hash()
+
+
+def discovery_angle(state: OnboardingState) -> str:
+    return DISCOVERY_ANGLES[(_seed(state) + state.user_turns) % len(DISCOVERY_ANGLES)]
+
+
+def discovery_move(state: OnboardingState) -> str:
+    return DISCOVERY_MOVES[(_seed(state) // 7 + state.user_turns) % len(DISCOVERY_MOVES)]
 
 
 @dataclass
@@ -146,12 +183,32 @@ def apply_tool_call(state: OnboardingState, args: dict[str, Any]) -> ApplyResult
     if args.get("offered_graduation"):
         state.graduation_offered = True
 
+    suggestions = args.get("starter_suggestions")
+    if isinstance(suggestions, list):
+        clean = [v.clean(x)[:80] for x in suggestions if isinstance(x, str) and v.clean(x)][:3]
+        if clean:
+            state.starter_suggestions = clean
+            res.ui.append({"type": "suggestions", "items": clean})
+            res.messages.append("starter suggestions saved")
+
     answer = args.get("graduation_answer")
-    if answer == "declined":
+    if args.get("ready_to_start") and not state.wrapping_up and not args.get("wants_to_skip"):
+        # "I'm good" to the offer means yes: run the wrap-up before letting them go.
+        answer = "accepted"
+        res.rejected.append(
+            "ready_to_start: the wrap-up hasn't happened yet. Their yes starts it: give the starter ideas, a tip, "
+            "and ask if they have questions before saying goodbye"
+        )
+    if args.get("wants_to_skip") or (args.get("ready_to_start") and state.wrapping_up):
+        graduate(state, res)
+    elif answer == "declined":
         state.graduation_declined_at_turn = state.user_turns
         res.messages.append("graduation declined; won't offer again for a few turns")
-    elif answer == "accepted" or args.get("wants_to_skip"):
-        graduate(state, res)
+    elif answer == "accepted" and not state.wrapping_up:
+        state.wrapping_up = True
+        state.graduation_offered = True
+        res.ui.append({"type": "wrap_up"})
+        res.messages.append("wrap-up started: starters, a tip or two, then ask if they have questions")
 
     return res
 
@@ -229,6 +286,20 @@ def _priority(state: OnboardingState) -> list[str]:
     if s.graduated:
         return ["They've graduated. Wrap up warmly in one sentence; don't ask for anything."]
 
+    if s.wrapping_up:
+        if not s.starter_suggestions:
+            return [
+                "Wrap-up. Give two or three concrete ways to get started, tailored to what they told you"
+                + (" and their connected Gmail" if s.gmail_status == "connected" else "")
+                + " (save as starter_suggestions), one or two quick tips on using Persona, then ask if they have "
+                "any questions before they dive in. If they just said yes to jumping in, do all of that now."
+            ]
+        return [
+            "Wrap-up, suggestions already given. Answer any question briefly and honestly, then check if there's "
+            "anything else. When they're good, send them off in one warm line and set ready_to_start=true. "
+            "Don't repeat the suggestions."
+        ]
+
     if s.channel == "text" and not s.agent_name and not in_call(s):
         return [
             "Learn what they want to call you. If they're unsure, suggest two or three short, friendly names. "
@@ -272,10 +343,19 @@ def _priority(state: OnboardingState) -> list[str]:
         )
         return lines
 
+    discover = (
+        "discover what they need without asking for it. If they've already shared something about their life, "
+        f"dig into that. Otherwise get curious about {discovery_angle(s)}, shaped as {discovery_move(s)}. "
+        "Be specific to that angle, in your own words. No catch-all questions like 'what's been keeping you busy' "
+        "or 'what's life like lately'."
+    )
     if not s.user_name:
         lines.append("Learn what to call them.")
+        if not s.help_topic:
+            # The note is written before the model reads the message, so say what comes next too.
+            lines.append(f"If they give their name this turn, use it once and go straight on to: {discover}")
     elif not s.help_topic:
-        lines.append("Learn what they could use a hand with, in their own words. Ask it in an inviting way, not like a survey.")
+        lines.append(discover[0].upper() + discover[1:])
     elif gmail_still_offerable(s) and not s.gmail_card_shown:
         lines.append(
             "Suggest connecting Gmail and tie it to what they need help with. Tell them the Connect Gmail button is "
@@ -291,7 +371,15 @@ def _priority(state: OnboardingState) -> list[str]:
     elif grad_ok:
         lines.append("Everything essential is done. Keep it brief; if they seem ready, offer again to jump in.")
 
-    if s.turns_since_progress >= STALL_TURNS and not s.graduated:
+    if s.graduation_offered and not s.wrapping_up:
+        # Written before the model reads their answer, so spell out what a yes means.
+        lines.append(
+            "If they're saying yes to jumping in (including 'I'm good' or 'sounds good'), that starts the wrap-up: "
+            "set graduation_answer='accepted' and in this reply give starter ideas, a tip, and ask if they have "
+            "questions. Don't say goodbye yet."
+        )
+
+    if s.turns_since_progress >= STALL_TURNS:
         lines.append(
             f"The last {s.turns_since_progress} turns haven't moved things forward. Gently nudge, or offer to "
             "finish later / skip for now."
@@ -318,6 +406,8 @@ def directors_note(state: OnboardingState, *, channel: str, user_text: str = "")
 
     if s.graduated:
         grad = "done"
+    elif s.wrapping_up:
+        grad = "accepted; wrapping up"
     elif not graduation_allowed(s):
         grad = "not yet allowed"
     elif graduation_cooling_down(s):

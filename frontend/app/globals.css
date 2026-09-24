@@ -491,3 +491,19 @@ button.wide {
     box-shadow: var(--shadow);
   }
 }
+
+.starters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+button.starter {
+  text-align: left;
+  border-radius: 12px;
+  padding: 11px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+button.starter:hover {
+  border-color: var(--accent);
+}

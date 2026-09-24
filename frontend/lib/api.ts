@@ -28,6 +28,8 @@ export type SessionState = {
   short_answer_streak: number;
   turns_since_progress: number;
   user_turns: number;
+  wrapping_up: boolean;
+  starter_suggestions: string[];
   graduation_offered: boolean;
   graduated: boolean;
   corrected: string[];
@@ -44,6 +46,8 @@ export type UiEvent =
   | { type: "show_callback" }
   | { type: "show_gmail_card" }
   | { type: "hide_gmail_card" }
+  | { type: "wrap_up" }
+  | { type: "suggestions"; items: string[] }
   | { type: "graduated" }
   | { type: "slot"; slot: string; value: string };
 

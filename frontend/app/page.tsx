@@ -300,6 +300,14 @@ export default function Onboarding() {
               </div>
             )}
 
+            {session?.wrapping_up && !graduated && callView === "none" && (
+              <div className="row">
+                <button className="primary" onClick={() => sendEvent("graduate")}>
+                  I&apos;m ready, let&apos;s go
+                </button>
+              </div>
+            )}
+
             {gmailCard && callView === "none" && (
               <GmailCard
                 stub={config.gmail_stub}
@@ -331,6 +339,7 @@ export default function Onboarding() {
           onDecline={declineRing}
           onHangUp={hangUp}
           onSay={sendMessage}
+          onReady={session?.wrapping_up && !graduated ? () => sendEvent("graduate") : undefined}
           gmail={
             gmailCard ? (
               <GmailCard
@@ -352,7 +361,11 @@ export default function Onboarding() {
       )}
 
       {graduated && !doneDismissed && callView === "none" && session && (
-        <DonePanel s={session} onClose={() => setDoneDismissed(true)} />
+        <DonePanel
+          s={session}
+          onClose={() => setDoneDismissed(true)}
+          onStart={(text) => { setDoneDismissed(true); void sendMessage(text); }}
+        />
       )}
     </div>
   );
@@ -495,6 +508,7 @@ function CallScreen({
   onDecline,
   onHangUp,
   onSay,
+  onReady,
   gmail,
 }: {
   view: CallView;
@@ -506,6 +520,7 @@ function CallScreen({
   onDecline: () => void;
   onHangUp: () => void;
   onSay: (t: string) => void;
+  onReady?: () => void;
   gmail: React.ReactNode;
 }) {
   const [seconds, setSeconds] = useState(0);
@@ -546,6 +561,11 @@ function CallScreen({
             {gmail}
             <p className="stub-label">Phase 1: type to talk. Real voice comes in Phase 2.</p>
             <Composer placeholder="Say something…" onSend={onSay} />
+            {onReady && (
+              <button className="primary wide" onClick={onReady}>
+                I&apos;m ready, let&apos;s go
+              </button>
+            )}
             <button className="decline wide" onClick={onHangUp}>
               End call
             </button>
@@ -556,7 +576,7 @@ function CallScreen({
   );
 }
 
-function DonePanel({ s, onClose }: { s: SessionState; onClose: () => void }) {
+function DonePanel({ s, onClose, onStart }: { s: SessionState; onClose: () => void; onStart: (text: string) => void }) {
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="You're in">
       <div className="modal done">
@@ -570,14 +590,27 @@ function DonePanel({ s, onClose }: { s: SessionState; onClose: () => void }) {
           <dt>Gmail</dt>
           <dd>{s.gmail_status === "connected" ? s.gmail : <span className="muted">Not connected. You can connect it anytime.</span>}</dd>
         </dl>
-        {s.help_topic && (
-          <p>
-            <strong>First up:</strong> {s.help_topic}
-          </p>
+        {s.starter_suggestions.length > 0 ? (
+          <>
+            <p className="small muted">Try one of these first:</p>
+            <div className="starters">
+              {s.starter_suggestions.map((t) => (
+                <button key={t} className="starter" onClick={() => onStart(t)}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          s.help_topic && (
+            <p>
+              <strong>First up:</strong> {s.help_topic}
+            </p>
+          )
         )}
         <div className="row end">
-          <button className="primary" onClick={onClose}>
-            Let&apos;s go
+          <button className={s.starter_suggestions.length ? "ghost" : "primary"} onClick={onClose}>
+            {s.starter_suggestions.length ? "I'll explore on my own" : "Let's go"}
           </button>
         </div>
       </div>

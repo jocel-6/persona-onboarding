@@ -53,6 +53,32 @@ def test_skip_graduates_immediately_with_defaults():
     assert {"type": "graduated"} in res.ui
 
 
+def test_accepting_graduation_starts_wrap_up_not_exit():
+    s = OnboardingState(agent_name="Iris", user_name="Josie", help_topic="school emails", call_status="in_progress")
+    res = orch.apply_tool_call(s, {"graduation_answer": "accepted"})
+    assert s.wrapping_up and not s.graduated
+    assert {"type": "wrap_up"} in res.ui
+    assert "starter_suggestions" in orch.directors_note(s, channel="voice")
+
+    res = orch.apply_tool_call(s, {"starter_suggestions": ["Find permission slips due this week", "  ", 5]})
+    assert s.starter_suggestions == ["Find permission slips due this week"]
+    assert "anything else" in orch.directors_note(s, channel="voice")
+
+    orch.apply_tool_call(s, {"ready_to_start": True})
+    assert s.graduated and s.call_status == "completed"
+
+
+def test_early_ready_runs_wrap_up_first_but_skip_still_exits():
+    s = OnboardingState(user_name="Josie", help_topic="school emails", graduation_offered=True)
+    res = orch.apply_tool_call(s, {"ready_to_start": True})
+    assert s.wrapping_up and not s.graduated
+    assert res.rejected  # forces an immediate follow-up so the wrap-up happens now
+
+    s = OnboardingState(user_name="Josie", help_topic="school emails", graduation_offered=True)
+    orch.apply_tool_call(s, {"wants_to_skip": True})
+    assert s.graduated
+
+
 def test_graduation_decline_cooldown():
     s = OnboardingState(user_name="Sam", help_topic="inbox", user_turns=5)
     orch.apply_tool_call(s, {"graduation_answer": "declined"})
@@ -91,6 +117,22 @@ def test_director_note_priorities():
     s.sentiment = "rushed"
     note = orch.directors_note(s, channel="voice")
     assert "jump in now" in note and "One sentence." in note
+
+
+def test_help_topic_is_discovered_not_asked():
+    notes = set()
+    for _ in range(12):
+        s = OnboardingState(agent_name="Iris", user_name="Maya", call_status="in_progress", channel="voice")
+        note = orch.directors_note(s, channel="voice")
+        assert "Discover what they need without asking" in note
+        assert "need help with" not in note
+        notes.add(orch.discovery_angle(s))
+    assert len(notes) > 3  # different people get different openers
+
+    s = OnboardingState(agent_name="Iris", user_name="Maya")
+    first = orch.discovery_angle(s)
+    s.user_turns += 1
+    assert orch.discovery_angle(s) != first  # a stalled thread gets a fresh angle
 
 
 def test_director_note_frustrated_and_stall():

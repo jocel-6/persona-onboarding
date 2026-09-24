@@ -1,0 +1,89 @@
+"""Onboarding state: the slot table plus call/channel status and behavioral signals.
+
+Code owns this object. The model only proposes changes through the save tool,
+and the orchestrator validates them before they land here.
+"""
+
+from __future__ import annotations
+
+import time
+import uuid
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+
+GmailStatus = Literal["not_connected", "popup_open", "connected", "denied", "error"]
+Channel = Literal["text", "voice"]
+CallStatus = Literal[
+    "not_started", "offered", "ringing", "in_progress", "hung_up", "declined", "missed", "completed"
+]
+Sentiment = Literal["neutral", "frustrated", "enthusiastic", "rushed", "chatty"]
+
+SLOTS = ("agent_name", "user_name", "gmail", "help_topic")
+DEFAULT_AGENT_NAME = "Nova"
+
+
+class Turn(BaseModel):
+    """One visible line of the shared transcript (voice and text alike)."""
+
+    role: Literal["user", "agent", "event"]
+    text: str
+    channel: Channel
+    ts: float = Field(default_factory=time.time)
+
+
+class OnboardingState(BaseModel):
+    session_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+
+    # The four slots.
+    agent_name: str | None = None
+    user_name: str | None = None
+    gmail: str | None = None
+    help_topic: str | None = None
+    agent_name_defaulted: bool = False  # user skipped naming, so we used the default
+
+    gmail_status: GmailStatus = "not_connected"
+    gmail_card_shown: bool = False
+    gmail_offer_count: int = 0
+
+    channel: Channel = "text"
+    call_status: CallStatus = "not_started"
+
+    sentiment: Sentiment = "neutral"
+    short_answer_streak: int = 0
+    turns_since_progress: int = 0
+    user_turns: int = 0
+
+    value_moment_done: bool = False
+
+    graduation_offered: bool = False
+    graduation_declined_at_turn: int | None = None
+    graduated: bool = False
+
+    # Slots that were corrected at least once, so the recap can show them.
+    corrected: list[str] = Field(default_factory=list)
+
+    # Shared transcript for the UI and the recap. Survives hangups and channel switches.
+    transcript: list[Turn] = Field(default_factory=list)
+
+    # Raw Messages API history (content blocks as dicts). Append-only so the
+    # prompt cache prefix stays valid turn to turn.
+    messages: list[dict[str, Any]] = Field(default_factory=list)
+
+    # tool_result blocks owed to the model, sent at the start of the next user message.
+    pending_tool_results: list[dict[str, Any]] = Field(default_factory=list)
+
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
+
+    # ---- derived views -------------------------------------------------
+
+    def filled(self) -> dict[str, str]:
+        return {s: getattr(self, s) for s in SLOTS if getattr(self, s)}
+
+    def missing(self) -> list[str]:
+        return [s for s in SLOTS if not getattr(self, s)]
+
+    def public_view(self) -> dict[str, Any]:
+        """What the browser is allowed to see: no raw API history, no tokens."""
+        return self.model_dump(exclude={"messages", "pending_tool_results"})

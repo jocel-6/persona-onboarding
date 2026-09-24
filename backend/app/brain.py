@@ -30,6 +30,11 @@ from .state import OnboardingState, Turn
 log = logging.getLogger("persona.brain")
 
 MAX_ROUNDS = 3
+# Fields that record what the *user* wants. Only a turn where the user actually
+# said something can set them; an app event (silence, Gmail connected) never can.
+USER_INTENT_FIELDS = (
+    "wants_text", "wants_call", "wants_to_skip", "declined_gmail", "graduation_answer", "ready_to_start",
+)
 FALLBACK_REPLY = "Sorry, I lost my train of thought for a second. Mind saying that again?"
 
 
@@ -63,7 +68,8 @@ def _repair_after_cancel(state: OnboardingState, said: str) -> None:
         if not any(b["type"] == "text" for b in kept):
             kept.append({"type": "text", "text": text})
         last["content"] = kept
-    state.transcript.append(Turn(role="agent", text=(said + "…") if said else "…", channel=state.channel))
+    if said:
+        state.transcript.append(Turn(role="agent", text=said + "…", channel=state.channel))
 
 
 class Brain:
@@ -173,7 +179,14 @@ class Brain:
                 results: list[dict[str, Any]] = []
                 any_rejected = False
                 for tu in tool_uses:
-                    res = orch.apply_tool_call(state, tu["input"])
+                    args = tu["input"]
+                    ignored: list[str] = []
+                    if user_text is None and isinstance(args, dict):
+                        ignored = [k for k in USER_INTENT_FIELDS if k in args]
+                        args = {k: v for k, v in args.items() if k not in ignored}
+                    res = orch.apply_tool_call(state, args)
+                    if ignored:
+                        res.messages.append(f"ignored {', '.join(ignored)}: only set when the user says so")
                     progressed |= res.progressed
                     any_rejected |= bool(res.rejected)
                     ui_events.extend(res.ui)

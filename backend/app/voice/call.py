@@ -51,11 +51,12 @@ from .. import runtime
 from ..events import apply_event
 from ..state import OnboardingState
 from .tts import make_tts
-from .turntaking import BackchannelAwareStartStrategy
+from .turntaking import BackchannelAwareStartStrategy, strip_leading_backchannels
 
 log = logging.getLogger("persona.voice")
 
 LOW_CONFIDENCE = 0.6
+CLIENT_READY_FALLBACK_SECS = 2.0
 LATENCY_LOG = Path(runtime.settings.db_path).parent / "latency.jsonl"
 
 # session_id -> the live call, so HTTP events (Gmail connected, "I'm ready") are spoken.
@@ -108,7 +109,10 @@ class BrainService(FrameProcessor):
         self._silences = 0
         self._t_turn_end: float | None = None
         self._t_first_token: float | None = None
-        self._ttft_ms: int | None = None
+        self._audio_started = False
+        # Which assistant message / transcript line the last voice turn produced,
+        # so a barge-in trims exactly that one (never a later text reply).
+        self._last_turn_ref: tuple[int, int] | None = None
 
     # ---- frames ---------------------------------------------------------
 
@@ -116,17 +120,21 @@ class BrainService(FrameProcessor):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, LLMContextFrame):
-            text = _last_user_text(frame.context)
+            text = strip_leading_backchannels(_last_user_text(frame.context))
             if text:
                 await self.start_turn(user_text=text)
             return  # consumed: we are the "LLM"
 
         if isinstance(frame, InterruptionFrame):
-            if self._turn and not self._turn.done():
+            # Only a real interruption if they'd already started hearing this reply;
+            # otherwise it was just a mid-thought pause and we simply wait for the rest.
+            if self._turn and not self._turn.done() and self._audio_started:
                 self._was_interrupted = True
             await self._cancel_turn()
-        elif isinstance(frame, BotStartedSpeakingFrame) and self._t_turn_end is not None:
-            self._log_latency()
+        elif isinstance(frame, BotStartedSpeakingFrame):
+            self._audio_started = True
+            if self._t_turn_end is not None:
+                self._log_latency()
 
         await self.push_frame(frame, direction)
 
@@ -155,6 +163,7 @@ class BrainService(FrameProcessor):
 
         self._t_turn_end = time.perf_counter()
         self._t_first_token = None
+        self._audio_started = False
         sid = self.call.session_id
         async with runtime.locks[sid]:
             state = runtime.store.get(sid)
@@ -174,11 +183,11 @@ class BrainService(FrameProcessor):
                     elif ev["type"] == "ui":
                         await self._send(ev)
                     elif ev["type"] == "done":
-                        self._ttft_ms = ev["latency"]["ttft_ms"]
                         await self._send(ev)
                 finished = True
             finally:
                 await gen.aclose()  # repairs history if we were cut off
+                self._last_turn_ref = (len(state.messages) - 1, len(state.transcript) - 1)
                 runtime.store.save(state)
                 if finished:
                     if started:
@@ -187,12 +196,15 @@ class BrainService(FrameProcessor):
 
     async def trim_to_heard(self, heard: str):
         """After a barge-in, keep only what the user actually heard in the history."""
+        ref, self._last_turn_ref = self._last_turn_ref, None
+        if ref is None or self.call.stopping:
+            return  # a hangup isn't a barge-in; the call is over
         sid = self.call.session_id
         async with runtime.locks[sid]:
             state = runtime.store.get(sid)
             if state is None:
                 return
-            _trim_last_agent_turn(state, heard.strip())
+            _trim_agent_turn(state, ref, heard.strip())
             runtime.store.save(state)
             await self._send({"type": "state", "state": state.public_view()})
 
@@ -236,7 +248,6 @@ class BrainService(FrameProcessor):
         entry = {
             "ts": time.time(),
             "session": self.call.session_id[:8],
-            "llm_first_token_ms": self._ttft_ms,
             "turn_end_to_first_token_ms": round((self._t_first_token - self._t_turn_end) * 1000)
             if self._t_first_token
             else None,
@@ -252,20 +263,16 @@ class BrainService(FrameProcessor):
             pass
 
 
-def _trim_last_agent_turn(state: OnboardingState, heard: str) -> None:
+def _trim_agent_turn(state: OnboardingState, ref: tuple[int, int], heard: str) -> None:
+    """Cut the voice turn at `ref` (message index, transcript index) to what was heard."""
+    msg_i, turn_i = ref
     marker = " [cut off here: the user interrupted]"
-    for msg in reversed(state.messages):
-        if msg["role"] != "assistant":
-            continue
-        others = [b for b in msg["content"] if b["type"] != "text"]
-        msg["content"] = [{"type": "text", "text": (heard or "(nothing)") + marker}] + [
-            b for b in others if b["type"] != "thinking"
-        ]
-        break
-    for turn in reversed(state.transcript):
-        if turn.role == "agent":
-            turn.text = (heard + "…") if heard else "…"
-            break
+    if 0 <= msg_i < len(state.messages) and state.messages[msg_i]["role"] == "assistant":
+        msg = state.messages[msg_i]
+        others = [b for b in msg["content"] if b["type"] not in ("text", "thinking")]
+        msg["content"] = [{"type": "text", "text": (heard or "(nothing)") + marker}] + others
+    if 0 <= turn_i < len(state.transcript) and state.transcript[turn_i].role == "agent":
+        state.transcript[turn_i].text = (heard + "…") if heard else "…"
 
 
 class VoiceCall:
@@ -274,6 +281,8 @@ class VoiceCall:
         self.connection = connection
         self.brain_svc = BrainService(self)
         self.task: PipelineTask | None = None
+        self._greeted = False
+        self.stopping = False
 
     def _keyterms(self) -> list[str]:
         state = runtime.store.get(self.session_id)
@@ -316,7 +325,11 @@ class VoiceCall:
 
         @transport.event_handler("on_client_connected")
         async def _connected(_transport, _client):
-            await self._on_connected()
+            # Prefer starting on the browser's client-ready (data channel and speaker are
+            # set up by then); fall back after a moment in case it never arrives.
+            asyncio.get_running_loop().call_later(
+                CLIENT_READY_FALLBACK_SECS, lambda: asyncio.ensure_future(self._on_connected())
+            )
 
         @transport.event_handler("on_client_disconnected")
         async def _disconnected(_transport, _client):
@@ -335,9 +348,17 @@ class VoiceCall:
             ]
         )
         self.task = PipelineTask(pipeline, params=PipelineParams(enable_metrics=True))
+
+        @self.task.rtvi.event_handler("on_client_ready")
+        async def _client_ready(_rtvi):
+            await self._on_connected()
+
         return self.task
 
     async def _on_connected(self):
+        if self._greeted:
+            return
+        self._greeted = True
         async with runtime.locks[self.session_id]:
             state = runtime.store.get(self.session_id)
             if state is None:
@@ -364,6 +385,7 @@ class VoiceCall:
                 del active_calls[self.session_id]
 
     async def stop(self):
+        self.stopping = True
         if self.task:
             await self.task.cancel()
 

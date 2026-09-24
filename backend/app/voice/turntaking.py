@@ -14,14 +14,17 @@ answer, so it starts a turn as usual. End-of-turn detection (is the user done?)
 is Pipecat's Smart Turn v3 model, which listens to the audio, so "I'm, uh..."
 waits and "I'm Sam." responds fast.
 
-Threshold note for the README: the design suggests "shorter than ~400ms". Voice
-activity alone can't tell "mhm" from "wait", so we decide on the words instead:
-at most MAX_BACKCHANNEL_WORDS words, all from the backchannel list. Interim
-transcripts arrive in ~200-300ms, so a real interruption still cuts in fast.
+Threshold note for the README: two signals, whichever comes first.
+  * Duration: speech still going BARGE_IN_SECS (0.6s) after it started is a real
+    interruption. The design suggested ~400ms; in testing, a spoken "mhm" ran
+    close to 400ms, so 0.6s leaves margin.
+  * Words: a stop word ("wait", "actually", ...) interrupts as soon as the interim
+    transcript shows it; a transcript that's all backchannel cancels the timer.
 """
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Literal
 
@@ -32,11 +35,15 @@ from pipecat.frames.frames import (
     InterimTranscriptionFrame,
     TranscriptionFrame,
     VADUserStartedSpeakingFrame,
+    VADUserStoppedSpeakingFrame,
 )
 from pipecat.turns.types import ProcessFrameResult
 from pipecat.turns.user_start.base_user_turn_start_strategy import BaseUserTurnStartStrategy
 
 MAX_BACKCHANNEL_WORDS = 3
+# Speech that keeps going this long while the agent talks is a real interruption,
+# even before any words are transcribed. "Mhm" and "yeah" are shorter than this.
+BARGE_IN_SECS = 0.6
 
 BACKCHANNELS = {
     "mhm", "mm", "mmhm", "mmhmm", "hmm", "hm", "uh-huh", "uhhuh", "uh", "huh", "yeah", "yep", "yup", "yes",
@@ -47,6 +54,12 @@ BACKCHANNELS = {
 STOP_PHRASES = ("wait", "no", "stop", "actually", "hold on", "hang on", "sorry", "excuse me", "hey", "um no")
 
 _WORD_RE = re.compile(r"[a-z]+(?:[-'][a-z]+)*")
+# Listening noises however the transcriber spells them: mm, mhm, mhmm, mmhmm, hmm, uh-huh, uh huh.
+_NOISE_RE = re.compile(r"^(m+|m*h*m+h*m*|h+m+|u+h+|u+h+-?h+u+h+|a+h+|o+h+)$")
+
+
+def _is_backchannel_word(w: str) -> bool:
+    return w in BACKCHANNELS or bool(_NOISE_RE.match(w))
 
 BargeIn = Literal["backchannel", "interrupt", "undecided"]
 
@@ -58,13 +71,28 @@ def classify_barge_in(text: str) -> BargeIn:
     if not words:
         return "undecided"
     padded = f" {' '.join(words)} "
-    if any(f" {p} " in padded for p in STOP_PHRASES):
+    if any(f" {p} " in padded for p in STOP_PHRASES) or any(w.startswith("wait") for w in words):
         return "interrupt"
-    if len(words) <= MAX_BACKCHANNEL_WORDS and all(w in BACKCHANNELS for w in words):
+    if len(words) <= MAX_BACKCHANNEL_WORDS and all(_is_backchannel_word(w) for w in words):
         return "backchannel"
     if len(words) >= 2:
         return "interrupt"
     return "undecided"  # one unknown word so far: wait for the interim transcript to grow
+
+
+_SENTENCE_RE = re.compile(r"[^.!?]+[.!?]*")
+
+
+def strip_leading_backchannels(text: str) -> str:
+    """Drop listening noises heard while the agent talked from the start of a user turn.
+
+    "Mhmm. Sorry, I just meant..." -> "Sorry, I just meant...". A turn that is only
+    a backchannel is kept: then it's an answer ("Yeah.").
+    """
+    sentences = [s.strip() for s in _SENTENCE_RE.findall(text) if s.strip()]
+    while len(sentences) > 1 and classify_barge_in(sentences[0]) == "backchannel":
+        sentences.pop(0)
+    return " ".join(sentences) if sentences else text
 
 
 class BackchannelAwareStartStrategy(BaseUserTurnStartStrategy):
@@ -77,28 +105,52 @@ class BackchannelAwareStartStrategy(BaseUserTurnStartStrategy):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._bot_speaking = False
+        self._heard_backchannel = False
+        self._barge_timer: asyncio.Task | None = None
         self.backchannels_ignored = 0
 
     async def handle_user_turn_started(self):
         # Once the user has the floor, the agent has stopped.
         self._bot_speaking = False
+        await self._cancel_barge_timer()
+
+    async def _cancel_barge_timer(self):
+        if self._barge_timer and not self._barge_timer.done():
+            self._barge_timer.cancel()
+        self._barge_timer = None
+
+    async def _barge_in_after_delay(self):
+        await asyncio.sleep(BARGE_IN_SECS)
+        if self._bot_speaking and not self._heard_backchannel:
+            await self.trigger_user_turn_started()
 
     async def process_frame(self, frame: Frame) -> ProcessFrameResult:
         if isinstance(frame, BotStartedSpeakingFrame):
             self._bot_speaking = True
         elif isinstance(frame, BotStoppedSpeakingFrame):
             self._bot_speaking = False
-        elif isinstance(frame, VADUserStartedSpeakingFrame) and not self._bot_speaking:
-            await self.trigger_user_turn_started()
-            return ProcessFrameResult.STOP
+            await self._cancel_barge_timer()
+        elif isinstance(frame, VADUserStartedSpeakingFrame):
+            if not self._bot_speaking:
+                await self.trigger_user_turn_started()
+                return ProcessFrameResult.STOP
+            # Agent is talking: interrupt if this keeps going past a backchannel's length.
+            self._heard_backchannel = False
+            await self._cancel_barge_timer()
+            self._barge_timer = asyncio.create_task(self._barge_in_after_delay())
+        elif isinstance(frame, VADUserStoppedSpeakingFrame):
+            await self._cancel_barge_timer()
         elif isinstance(frame, (TranscriptionFrame, InterimTranscriptionFrame)):
             if not self._bot_speaking:
                 await self.trigger_user_turn_started()
                 return ProcessFrameResult.STOP
             verdict = classify_barge_in(frame.text)
             if verdict == "interrupt":
+                await self._cancel_barge_timer()
                 await self.trigger_user_turn_started()
                 return ProcessFrameResult.STOP
+            if verdict == "backchannel":
+                self._heard_backchannel = True
             if verdict == "backchannel" and isinstance(frame, TranscriptionFrame):
                 # Final "mhm": drop it so it isn't glued onto the next real turn.
                 self.backchannels_ignored += 1

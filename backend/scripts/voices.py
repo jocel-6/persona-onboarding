@@ -123,13 +123,18 @@ def list_voices(s: Settings) -> None:
             print("\n== Cartesia: set CARTESIA_API_KEY to list voices")
         if s.elevenlabs_api_key:
             r = c.get("https://api.elevenlabs.io/v1/voices", headers={"xi-api-key": s.elevenlabs_api_key})
-            r.raise_for_status()
-            voices = r.json().get("voices", [])
+            if r.status_code != 200:
+                detail = r.json().get("detail", {}) if r.headers.get("content-type", "").startswith("application/json") else {}
+                print(f"\n== ElevenLabs: error {r.status_code}: {detail.get('message', r.text[:200])}")
+                voices = None
+            else:
+                voices = r.json().get("voices", [])
+        if s.elevenlabs_api_key and voices is not None:
             print(f"\n== ElevenLabs ({len(voices)})")
             for v in voices:
                 labels = ", ".join(f"{k}={val}" for k, val in (v.get("labels") or {}).items())
                 print(f"  elevenlabs:{v['voice_id']}  {v.get('name', '')}: {labels[:90]}")
-        else:
+        elif not s.elevenlabs_api_key:
             print("\n== ElevenLabs: set ELEVENLABS_API_KEY to list voices")
         print("\n== OpenAI (baseline)" + ("" if s.openai_api_key else ": set OPENAI_API_KEY to use"))
         print("  " + "  ".join(f"openai:{v}" for v in OPENAI_VOICES))
@@ -165,6 +170,8 @@ def render(s: Settings, specs: list[str]) -> None:
             med = statistics.median(ttfbs)
             results.append({"spec": spec, "slug": slug, "provider": provider, "voice": voice, "ttfb_ms": round(med)})
             print(f"  {spec}: time to first audio median {med:.0f}ms")
+    if not results:
+        raise SystemExit("\nNo voices rendered; see the errors above.")
     (OUT / "render.json").write_text(json.dumps(results, indent=2))
     _write_listen_page(results)
     print(f"\nWrote {OUT}/listen.html. Play it for 3-5 friends; each downloads a ratings file.")

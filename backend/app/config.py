@@ -11,30 +11,42 @@ load_dotenv(BACKEND_DIR.parent / ".env")
 load_dotenv(BACKEND_DIR / ".env")
 
 
+def _env(name: str, default: str = "") -> str:
+    """Read an env var, treating a stray inline comment as empty.
+
+    python-dotenv reads `KEY=   # note` as the value "# note" when KEY is empty.
+    """
+    value = os.getenv(name, default).strip()
+    return default if value.startswith("#") else value
+
+
 @dataclass(frozen=True)
 class Settings:
-    llm_model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "claude-sonnet-5"))
+    llm_model: str = field(default_factory=lambda: _env("LLM_MODEL", "claude-sonnet-5"))
     # "adaptive" (thinking on, depth set by effort) or "disabled"
-    llm_thinking: str = field(default_factory=lambda: os.getenv("LLM_THINKING", "disabled"))
-    llm_effort: str = field(default_factory=lambda: os.getenv("LLM_EFFORT", "low"))
-    db_path: str = field(default_factory=lambda: os.getenv("DB_PATH", str(BACKEND_DIR / "data" / "sessions.db")))
-    frontend_origin: str = field(default_factory=lambda: os.getenv("FRONTEND_ORIGIN", "http://localhost:3000"))
+    llm_thinking: str = field(default_factory=lambda: _env("LLM_THINKING", "disabled"))
+    llm_effort: str = field(default_factory=lambda: _env("LLM_EFFORT", "low"))
+    db_path: str = field(default_factory=lambda: _env("DB_PATH", str(BACKEND_DIR / "data" / "sessions.db")))
+    frontend_origin: str = field(default_factory=lambda: _env("FRONTEND_ORIGIN", "http://localhost:3000"))
     # Phase 1 stand-in for the real Google sign-in (Phase 3). Off in production.
-    gmail_stub: bool = field(default_factory=lambda: os.getenv("GMAIL_STUB", "1") == "1")
+    gmail_stub: bool = field(default_factory=lambda: _env("GMAIL_STUB", "1") == "1")
 
     # ---- Voice (Phase 2) ----
-    deepgram_api_key: str = field(default_factory=lambda: os.getenv("DEEPGRAM_API_KEY", ""))
-    stt_model: str = field(default_factory=lambda: os.getenv("STT_MODEL", "nova-3-general"))
+    deepgram_api_key: str = field(default_factory=lambda: _env("DEEPGRAM_API_KEY", ""))
+    stt_model: str = field(default_factory=lambda: _env("STT_MODEL", "nova-3-general"))
     # The voice layer: switching provider or voice is config only (tech design 8.1).
-    tts_provider: str = field(default_factory=lambda: os.getenv("TTS_PROVIDER", "cartesia"))  # cartesia | elevenlabs | openai
-    tts_voice_id: str = field(default_factory=lambda: os.getenv("TTS_VOICE_ID", ""))
-    tts_model: str = field(default_factory=lambda: os.getenv("TTS_MODEL", ""))
-    cartesia_api_key: str = field(default_factory=lambda: os.getenv("CARTESIA_API_KEY", ""))
-    elevenlabs_api_key: str = field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY", ""))
-    openai_api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
+    tts_provider: str = field(default_factory=lambda: _env("TTS_PROVIDER", "cartesia"))  # cartesia | elevenlabs | openai
+    tts_voice_id: str = field(default_factory=lambda: _env("TTS_VOICE_ID", ""))
+    tts_model: str = field(default_factory=lambda: _env("TTS_MODEL", ""))
+    # "token" streams words to TTS as they arrive (~0.3s faster); "sentence" waits for full sentences.
+    # Empty = token for Cartesia (built for streamed text), sentence for the others.
+    tts_text_mode: str = field(default_factory=lambda: _env("TTS_TEXT_MODE", ""))
+    cartesia_api_key: str = field(default_factory=lambda: _env("CARTESIA_API_KEY", ""))
+    elevenlabs_api_key: str = field(default_factory=lambda: _env("ELEVENLABS_API_KEY", ""))
+    openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY", ""))
     # Silence on the call: first check-in after this many seconds, then offer text after the second value.
-    silence_checkin_secs: float = field(default_factory=lambda: float(os.getenv("SILENCE_CHECKIN_SECS", "5")))
-    silence_offer_text_secs: float = field(default_factory=lambda: float(os.getenv("SILENCE_OFFER_TEXT_SECS", "10")))
+    silence_checkin_secs: float = field(default_factory=lambda: float(_env("SILENCE_CHECKIN_SECS", "5")))
+    silence_offer_text_secs: float = field(default_factory=lambda: float(_env("SILENCE_OFFER_TEXT_SECS", "10")))
 
     def tts_key(self) -> str:
         return {

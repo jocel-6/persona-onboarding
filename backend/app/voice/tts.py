@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from pipecat.services.tts_service import TTSService
+from pipecat.services.tts_service import TextAggregationMode, TTSService
 
 from ..config import Settings
 
@@ -33,4 +33,9 @@ def make_tts(settings: Settings, *, provider: str | None = None, voice_id: str |
         raise ValueError(f"unknown TTS provider {provider!r}")
 
     opts = {k: v for k, v in {"voice": voice, "model": model}.items() if v}
-    return Service(api_key=key, settings=Service.Settings(**opts))
+    mode = settings.tts_text_mode or ("token" if provider == "cartesia" else "sentence")
+    return Service(
+        api_key=key,
+        settings=Service.Settings(**opts),
+        text_aggregation_mode=TextAggregationMode.TOKEN if mode == "token" else TextAggregationMode.SENTENCE,
+    )

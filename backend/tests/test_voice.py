@@ -6,15 +6,15 @@ from types import SimpleNamespace as NS
 from app.brain import Brain
 from app.config import Settings
 from app.state import OnboardingState, Turn
-from app.voice.call import _trim_last_agent_turn
-from app.voice.turntaking import classify_barge_in
+from app.voice.call import _trim_agent_turn
+from app.voice.turntaking import classify_barge_in, strip_leading_backchannels
 from tests.test_brain import FakeClient
 
 
 def test_backchannels_are_ignored_but_real_interruptions_stop_the_agent():
-    for t in ["mhm", "yeah", "uh-huh right", "okay got it", "yeah yeah", "sure"]:
+    for t in ["mhm", "Mhmm.", "mmhmm", "Mmm", "hmm", "uh huh", "yeah", "uh-huh right", "okay got it", "yeah yeah", "sure"]:
         assert classify_barge_in(t) == "backchannel", t
-    for t in ["wait", "no", "actually", "hold on", "sorry what", "yeah but that's not it", "I think so too"]:
+    for t in ["wait", "waits", "Waits. I", "no", "actually", "hold on", "sorry what", "yeah but that's not it", "I think so too"]:
         assert classify_barge_in(t) == "interrupt", t
     assert classify_barge_in("Maya") == "undecided"  # one unknown word: wait for more
     assert classify_barge_in("") == "undecided"
@@ -86,8 +86,18 @@ def test_trim_keeps_only_what_was_heard():
         },
     ]
     s.transcript = [Turn(role="agent", text="Nice! Once you connect Gmail I can sort all of that.", channel="voice")]
-    _trim_last_agent_turn(s, "Nice! Once you connect")
+    s.messages.append({"role": "user", "content": [{"type": "text", "text": "[event: hangup]"}]})
+    s.messages.append({"role": "assistant", "content": [{"type": "text", "text": "Looks like we got cut off!"}]})
+    _trim_agent_turn(s, (1, 0), "Nice! Once you connect")
+    assert s.messages[-1]["content"][0]["text"] == "Looks like we got cut off!"  # later text reply untouched
+    s.messages = s.messages[:2]
     content = s.messages[-1]["content"]
     assert content[0]["text"].startswith("Nice! Once you connect [cut off")
     assert content[1]["type"] == "tool_use"  # tool call still pairs with its pending result
     assert s.transcript[-1].text == "Nice! Once you connect…"
+
+
+def test_leading_backchannels_are_dropped_from_a_turn():
+    assert strip_leading_backchannels("Mhmm. Sorry. I just meant my calendar?") == "Sorry. I just meant my calendar?"
+    assert strip_leading_backchannels("Yeah.") == "Yeah."  # on its own, it's an answer
+    assert strip_leading_backchannels("Yeah, that works.") == "Yeah, that works."

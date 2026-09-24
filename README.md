@@ -59,17 +59,25 @@ browser mic ──WebRTC──▶ Deepgram STT ─▶ confidence tagger ─▶ u
 
 - **Framework:** [Pipecat](https://github.com/pipecat-ai/pipecat) handles audio, WebRTC (browser ↔ server directly, no room service), VAD and turn-taking. Our brain plugs in as a custom processor (`backend/app/voice/call.py`), so the call and the chat share one state, one history, one prompt.
 - **Semantic turn detection:** Smart Turn v3 (runs locally, listens to the audio) decides whether you've finished: it responds fast after "I'm Sam." and waits after "I'm, uh…".
-- **Backchannel filtering** (`voice/turntaking.py`): while the agent is talking, "mhm", "yeah", "right" (≤3 words, all listening noises) are ignored; "wait", "no", "actually", "hold on" always cut in; anything else interrupts. When the agent isn't talking, "yeah" is an answer and starts a turn. The design suggested a ~400 ms duration threshold; VAD alone can't tell "mhm" from "wait", so the rule uses words instead, which interim transcripts deliver in ~200–300 ms.
+- **Backchannel filtering** (`voice/turntaking.py`): while the agent is talking, "mhm", "yeah", "right" (≤3 words, all listening noises, matched by sound so "Mhmm."/"mmhmm" count) are ignored and dropped from the next turn; "wait", "no", "actually", "hold on" always cut in. Two signals, whichever comes first: the words (from interim transcripts), or **duration: speech still going 0.6 s in is a real interruption.** The design suggested ~400 ms; a spoken "mhm" ran close to that in testing, so 0.6 s leaves margin. Measured: "wait, actually…" stops the agent 0.5–0.9 s after the user starts talking; "mhm" never did. When the agent isn't talking, "yeah" is an answer and starts a turn.
 - **Barge-in:** the agent stops mid-word, and its message in the history is cut to what you actually heard (`[cut off here: the user interrupted]`), so it never assumes you heard the rest.
 - **Audio annotations** the model sees (never shown in the transcript): `[you were interrupted…]`, `[low transcription confidence: Maya]` (→ a light "Maya, like M-A-Y-A?"), and silence events.
 - **Silence:** after 5 s a single gentle check-in; after 10 s more, an offer to switch to text; then quiet (no nagging).
 - **Keyword boosting:** the agent's and user's names are sent to Deepgram as key terms.
 - **Streaming everywhere:** Claude streams tokens, TTS starts on the first sentence.
-- **Latency:** every voice turn logs end-of-turn → first token → first audio to `backend/data/latency.jsonl`. *(Numbers go here after live testing.)*
+- **Latency:** every voice turn logs end-of-turn → first token → first audio to `backend/data/latency.jsonl`. Measured with the automated caller (target from the tech design: ~1 s):
+
+  | Brain | End of turn → first token (median) | → first audio (median) | → first audio (p90) |
+  |---|---|---|---|
+  | Claude Sonnet 5, thinking off | 1,078 ms | 1,662 ms | 1,761 ms |
+  | Claude Haiku 4.5 | 660 ms | **980 ms** | 1,079 ms |
+
+  TTS itself is fast (Cartesia: 145–270 ms to first audio); the LLM's first token is the bottleneck. Words stream to TTS as they're generated (`TTS_TEXT_MODE=token`).
+- **Automated call test** (`backend/scripts/call_test.py`): dials the agent over WebRTC, speaks with a second synthetic voice, and checks the happy path, "mhm" mid-sentence, a real interruption, silence, and hangup → text.
 - **Fallback:** no voice keys, or mic blocked → the call screen takes typed input instead, so the flow never breaks.
 
 ### Voice bake-off
-Voice is picked with data (`backend/scripts/voices.py`): `list` shows real voices per provider; `render provider:voice …` has each read 8 test lines (greeting, question, empathy, excitement, dates/times, unusual names, a long sentence, "Got it.") and measures time to first audio; `listen.html` is a blind listening page for 3–5 friends; `score` merges their ratings into the table below. *(Scorecard goes here.)*
+Voice is picked with data (`backend/scripts/voices.py`): `list` shows real voices per provider; `render provider:voice …` has each read 8 test lines (greeting, question, empathy, excitement, dates/times, unusual names, a long sentence, "Got it.") and measures time to first audio; `listen.html` is a blind listening page for 3–5 friends; `score` merges their ratings into the table below. Round 1 so far: Cartesia Parker, Skylar, Corey and Cathy rendered (time to first audio 145–267 ms); ElevenLabs pending. *(Scorecard goes here after the blind listening round.)*
 
 ### What's simulated (and why)
 - **The phone call** runs in the browser over WebRTC rather than a real phone number: no telephony vendor or number setup for reviewers, and the Gmail card can appear on screen mid-call.

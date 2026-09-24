@@ -115,3 +115,13 @@ def test_api_failure_rolls_back_history():
     events = run(brain, s, user_text="hello")
     assert s.messages == before
     assert "lost my train of thought" in events[-1]["reply"]
+
+
+def test_event_turns_cannot_set_user_intent():
+    """After a silence offer, the model must not decide on the user's behalf to end the call."""
+    client = FakeClient([("Want to switch to text instead?", {"wants_text": True}, "tool_use")])
+    brain = Brain(Settings(), client=client)
+    s = OnboardingState(agent_name="Kai", call_status="in_progress", channel="voice")
+    run(brain, s, event_text="10s more silence. Offer to switch to texting.")
+    assert s.call_status == "in_progress" and s.channel == "voice"
+    assert "only set when the user says so" in s.pending_tool_results[0]["content"]

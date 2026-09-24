@@ -206,8 +206,9 @@ async def post_event(session_id: str, body: EventIn) -> StreamingResponse:
                     "or re-ask anything you already know."
                 )
             return (
-                "the call just connected and the user picked up. Greet them by introducing yourself with your name, "
-                "then start getting to know them."
+                "the call just connected and the user picked up. Introduce yourself by name and open with one "
+                "curious, specific question as the director's note suggests. Don't ask for their name; they'll "
+                "usually offer it."
             )
 
         if t == "call_missed":
@@ -237,6 +238,9 @@ async def post_event(session_id: str, body: EventIn) -> StreamingResponse:
 
         if t == "gmail_connected":
             email = str(body.data.get("email") or "").strip()
+            google_name = str(body.data.get("name") or "").strip().split(" ")[0]
+            if google_name:
+                state.google_name = google_name
             state.gmail_status = "connected"
             state.gmail = email or "connected"
             state.gmail_card_shown = False

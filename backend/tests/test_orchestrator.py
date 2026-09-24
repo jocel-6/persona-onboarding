@@ -108,7 +108,9 @@ def test_director_note_priorities():
     s.call_status = "in_progress"
     s.channel = "voice"
     note = orch.directors_note(s, channel="voice")
-    assert "Learn what to call them" in note and "Graduation: not yet allowed" in note
+    # On the call, discovery leads; the name is picked up, never asked on its own.
+    assert "Discover what they need" in note and "don't ask for it on its own" in note
+    assert "Graduation: not yet allowed" in note and "30 words max" in note
 
     s.user_name, s.help_topic = "Maya", "school emails"
     note = orch.directors_note(s, channel="voice")
@@ -117,6 +119,33 @@ def test_director_note_priorities():
     s.sentiment = "rushed"
     note = orch.directors_note(s, channel="voice")
     assert "jump in now" in note and "One sentence." in note
+
+
+def test_name_comes_from_google_then_fold_in():
+    s = OnboardingState(agent_name="Iris", call_status="in_progress", channel="voice", help_topic="school emails")
+    s.gmail_status, s.google_name = "connected", "Margaret"
+    note = orch.directors_note(s, channel="voice")
+    assert "Value moment" in note and "Google account says 'Margaret'" in note  # right after connecting
+    s.value_moment_done = True
+    note = orch.directors_note(s, channel="voice")
+    assert "Google account says 'Margaret'" in note and "prefer something else" in note
+
+    s.gmail_status, s.google_name = "denied", None  # no Gmail: a light fold-in ask, never standalone
+    assert "Fold a light ask" in orch.directors_note(s, channel="voice")
+
+
+def test_mood_cues_set_before_the_model_replies():
+    s = OnboardingState()
+    orch.before_user_turn(s, "can we be quick, I have a meeting in five")
+    assert s.sentiment == "rushed"
+    orch.before_user_turn(s, "ugh I already told you that")
+    assert s.sentiment == "frustrated"
+    orch.before_user_turn(s, "hurry")  # rush doesn't downgrade frustration
+    assert s.sentiment == "frustrated"
+
+    s = OnboardingState()
+    orch.before_user_turn(s, "ugh I keep missing permission slips")  # venting about life, not us
+    assert s.sentiment == "neutral"
 
 
 def test_help_topic_is_discovered_not_asked():

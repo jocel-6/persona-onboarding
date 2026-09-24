@@ -240,6 +240,11 @@ def before_user_turn(state: OnboardingState, text: str) -> None:
         state.short_answer_streak += 1
     else:
         state.short_answer_streak = 0
+    # Set the mood before the note is written, so this reply already adapts.
+    # Frustration outranks rush; the model can still revise either via the tool.
+    cue = v.mood_cue(text)
+    if cue and not (cue == "rushed" and state.sentiment == "frustrated"):
+        state.sentiment = cue
 
 
 def after_turn(state: OnboardingState, progressed: bool) -> None:
@@ -341,21 +346,33 @@ def _priority(state: OnboardingState) -> list[str]:
             "(don't do) one concrete next action. Gmail data isn't wired up yet, so base it on what they told you "
             "and don't invent calendar events or emails."
         )
+        if not s.user_name and s.google_name:
+            lines.append(
+                f"Also, their Google account says {s.google_name!r}: ask lightly whether that's what they go by or "
+                "if they prefer something else, and save what they choose as user_name."
+            )
         return lines
 
     discover = (
-        "discover what they need without asking for it. If they've already shared something about their life, "
+        "Discover what they need without asking for it. If they've already shared something about their life, "
         f"dig into that. Otherwise get curious about {discovery_angle(s)}, shaped as {discovery_move(s)}. "
         "Be specific to that angle, in your own words. No catch-all questions like 'what's been keeping you busy' "
         "or 'what's life like lately'."
     )
-    if not s.user_name:
-        lines.append("Learn what to call them.")
-        if not s.help_topic:
-            # The note is written before the model reads the message, so say what comes next too.
-            lines.append(f"If they give their name this turn, use it once and go straight on to: {discover}")
-    elif not s.help_topic:
-        lines.append(discover[0].upper() + discover[1:])
+    name_passive = "If they mention their name, save it; don't ask for it on its own."
+    confirm_google_name = (
+        not s.user_name and s.google_name and s.gmail_status == "connected"
+    )
+
+    if not s.help_topic:
+        lines.append(discover)
+        if not s.user_name:
+            lines.append(name_passive)
+    elif confirm_google_name:
+        lines.append(
+            f"Their Google account says {s.google_name!r}. Ask lightly whether that's what they go by or if they "
+            "prefer something else, and save what they choose as user_name."
+        )
     elif gmail_still_offerable(s) and not s.gmail_card_shown:
         lines.append(
             "Suggest connecting Gmail and tie it to what they need help with. Tell them the Connect Gmail button is "
@@ -366,6 +383,11 @@ def _priority(state: OnboardingState) -> list[str]:
         lines.append("The Connect Gmail button is on their screen. Don't push; keep chatting while they decide.")
         if grad_ok and not s.graduation_offered:
             lines.append("If it feels natural, offer to let them jump in; Gmail can be connected later.")
+    elif not s.user_name:
+        lines.append(
+            "You still don't know what to call them. Fold a light ask into your reply (while reacting to something "
+            "they said), not as a standalone question."
+        )
     elif grad_ok and not s.graduation_offered:
         lines.append("Offer to let them jump in now, phrased as a question. Don't force it.")
     elif grad_ok:
@@ -425,7 +447,10 @@ def directors_note(state: OnboardingState, *, channel: str, user_text: str = "")
         "completed": "call finished; now texting",
     }.get(s.call_status, s.call_status)
 
-    length = "One or two short sentences." if channel == "voice" else "Keep it short, like a text message."
+    length = (
+        "Spoken reply: one or two short sentences, 30 words max." if channel == "voice"
+        else "Keep it short, like a text message."
+    )
     if s.sentiment in ("rushed", "frustrated") or s.short_answer_streak >= 2:
         length = "One sentence."
 

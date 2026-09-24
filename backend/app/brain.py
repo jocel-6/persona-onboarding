@@ -61,11 +61,14 @@ class Brain:
             "messages": list(messages),
             "cache_control": {"type": "ephemeral"},
         }
+        if self.settings.llm_model.startswith("claude-haiku-4-5"):
+            # Haiku 4.5 has no adaptive thinking or effort; omitting both means no thinking.
+            return kwargs
         if self.settings.llm_thinking == "disabled":
             kwargs["thinking"] = {"type": "disabled"}
         else:
             kwargs["thinking"] = {"type": "adaptive"}
-            kwargs["output_config"] = {"effort": self.settings.llm_effort}
+        kwargs["output_config"] = {"effort": self.settings.llm_effort}
         return kwargs
 
     async def run_turn(

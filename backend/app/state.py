@@ -43,6 +43,7 @@ class OnboardingState(BaseModel):
     agent_name_defaulted: bool = False  # user skipped naming, so we used the default
 
     gmail_status: GmailStatus = "not_connected"
+    google_name: str | None = None  # from Google sign-in; confirmed with the user before it becomes user_name
     gmail_card_shown: bool = False
     gmail_offer_count: int = 0
 

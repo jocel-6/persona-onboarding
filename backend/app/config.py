@@ -15,7 +15,7 @@ load_dotenv(BACKEND_DIR / ".env")
 class Settings:
     llm_model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "claude-sonnet-5"))
     # "adaptive" (thinking on, depth set by effort) or "disabled"
-    llm_thinking: str = field(default_factory=lambda: os.getenv("LLM_THINKING", "adaptive"))
+    llm_thinking: str = field(default_factory=lambda: os.getenv("LLM_THINKING", "disabled"))
     llm_effort: str = field(default_factory=lambda: os.getenv("LLM_EFFORT", "low"))
     db_path: str = field(default_factory=lambda: os.getenv("DB_PATH", str(BACKEND_DIR / "data" / "sessions.db")))
     frontend_origin: str = field(default_factory=lambda: os.getenv("FRONTEND_ORIGIN", "http://localhost:3000"))

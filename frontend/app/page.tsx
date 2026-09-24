@@ -355,7 +355,7 @@ export default function Onboarding() {
 
       {gmailPopup && (
         <GoogleStubPopup
-          onAllow={(email) => { setGmailPopup(false); void sendEvent("gmail_connected", { email }); }}
+          onAllow={(email, name) => { setGmailPopup(false); void sendEvent("gmail_connected", { email, name }); }}
           onCancel={() => { setGmailPopup(false); void sendEvent("gmail_closed"); }}
         />
       )}
@@ -473,8 +473,9 @@ function GmailCard({
   );
 }
 
-function GoogleStubPopup({ onAllow, onCancel }: { onAllow: (email: string) => void; onCancel: () => void }) {
+function GoogleStubPopup({ onAllow, onCancel }: { onAllow: (email: string, name: string) => void; onCancel: () => void }) {
   const [email, setEmail] = useState("you@gmail.com");
+  const [name, setName] = useState("Margaret Chen");
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Google sign-in (dev stub)">
       <div className="modal">
@@ -484,12 +485,16 @@ function GoogleStubPopup({ onAllow, onCancel }: { onAllow: (email: string) => vo
           Account
         </label>
         <input id="stub-email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <label className="small muted" htmlFor="stub-name">
+          Name on the Google account
+        </label>
+        <input id="stub-name" value={name} onChange={(e) => setName(e.target.value)} />
         <p className="small muted">Persona wants read-only access to your calendar and email subject lines.</p>
         <div className="row end">
           <button className="ghost" onClick={onCancel}>
             Cancel
           </button>
-          <button className="primary" onClick={() => onAllow(email)}>
+          <button className="primary" onClick={() => onAllow(email, name)}>
             Allow
           </button>
         </div>

@@ -367,10 +367,17 @@ def _priority(state: OnboardingState) -> list[str]:
         not s.user_name and s.google_name and s.gmail_status == "connected"
     )
 
+    spoken_on_call = sum(1 for t in s.transcript if t.role == "user" and t.channel == "voice")
+    early_name_ask = (
+        "You don't know their name yet: fold a light ask into this reply while reacting to what they said "
+        "(like '...who am I talking to, by the way?'), not as a standalone question."
+    )
+
     if not s.help_topic:
         lines.append(discover)
         if not s.user_name:
-            lines.append(name_passive)
+            # Opener stays curious; if they didn't offer a name in their first answer, ask lightly next.
+            lines.append(early_name_ask if spoken_on_call >= 1 or s.channel == "text" and s.user_turns > 2 else name_passive)
     elif confirm_google_name:
         lines.append(
             f"Their Google account says {s.google_name!r}. Ask lightly whether that's what they go by or if they "

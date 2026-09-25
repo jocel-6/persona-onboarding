@@ -19,6 +19,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
@@ -45,6 +47,7 @@ from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
+from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
 from .. import runtime
@@ -283,6 +286,8 @@ class VoiceCall:
         self.task: PipelineTask | None = None
         self._greeted = False
         self.stopping = False
+        self._fallback: asyncio.TimerHandle | None = None
+        self._trim_task: asyncio.Task | None = None
 
     def _keyterms(self) -> list[str]:
         state = runtime.store.get(self.session_id)
@@ -304,7 +309,16 @@ class VoiceCall:
             context,
             user_params=LLMUserAggregatorParams(
                 vad_analyzer=SileroVADAnalyzer(),
-                user_turn_strategies=UserTurnStrategies(start=[BackchannelAwareStartStrategy()]),
+                user_turn_strategies=UserTurnStrategies(
+                    start=[BackchannelAwareStartStrategy()],
+                    stop=[
+                        TurnAnalyzerUserTurnStopStrategy(
+                            turn_analyzer=LocalSmartTurnAnalyzerV3(
+                                params=SmartTurnParams(stop_secs=s.turn_max_wait_secs)
+                            )
+                        )
+                    ],
+                ),
                 user_idle_timeout=s.silence_checkin_secs,
             ),
         )
@@ -321,13 +335,16 @@ class VoiceCall:
         @assistant_agg.event_handler("on_assistant_turn_stopped")
         async def _assistant_stopped(_agg, message):
             if getattr(message, "interrupted", False):
-                await self.brain_svc.trim_to_heard(message.content or "")
+                # Never wait on the session lock inside a pipeline handler: the next brain
+                # turn holds that lock while it pushes frames through this pipeline, so
+                # waiting here deadlocks the call (it went silent after an interruption).
+                self._trim_task = asyncio.create_task(self.brain_svc.trim_to_heard(message.content or ""))
 
         @transport.event_handler("on_client_connected")
         async def _connected(_transport, _client):
             # Prefer starting on the browser's client-ready (data channel and speaker are
             # set up by then); fall back after a moment in case it never arrives.
-            asyncio.get_running_loop().call_later(
+            self._fallback = asyncio.get_running_loop().call_later(
                 CLIENT_READY_FALLBACK_SECS, lambda: asyncio.ensure_future(self._on_connected())
             )
 
@@ -356,8 +373,8 @@ class VoiceCall:
         return self.task
 
     async def _on_connected(self):
-        if self._greeted:
-            return
+        if self._greeted or self.stopping:
+            return  # a stale timer must never revive a call that already ended
         self._greeted = True
         async with runtime.locks[self.session_id]:
             state = runtime.store.get(self.session_id)
@@ -386,6 +403,8 @@ class VoiceCall:
 
     async def stop(self):
         self.stopping = True
+        if self._fallback:
+            self._fallback.cancel()
         if self.task:
             await self.task.cancel()
 

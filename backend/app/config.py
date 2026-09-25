@@ -65,6 +65,10 @@ class Settings:
     cartesia_api_key: str = field(default_factory=lambda: _env("CARTESIA_API_KEY", ""))
     elevenlabs_api_key: str = field(default_factory=lambda: _env("ELEVENLABS_API_KEY", ""))
     openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY", ""))
+    # End of turn: Smart Turn replies right away when it judges you're done; when it's unsure,
+    # wait at most this long in silence. Pipecat's default is 3s, which on real callers meant
+    # ~4.5s before every reply (the model often judged finished sentences "incomplete").
+    turn_max_wait_secs: float = field(default_factory=lambda: float(_env("TURN_MAX_WAIT_SECS", "1.2")))
     # Silence on the call: first check-in after this many seconds, then offer text after the second value.
     silence_checkin_secs: float = field(default_factory=lambda: float(_env("SILENCE_CHECKIN_SECS", "5")))
     silence_offer_text_secs: float = field(default_factory=lambda: float(_env("SILENCE_OFFER_TEXT_SECS", "10")))

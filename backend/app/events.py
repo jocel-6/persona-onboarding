@@ -61,6 +61,8 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
         return None, ui
 
     if t == "call_connected":
+        if state.call_status not in ("ringing", "in_progress"):
+            return None, ui  # the call already ended (or never rang): don't revive it
         state.call_status = "in_progress"
         state.channel = "voice"
         orch.add_event_turn(state, "Call connected")

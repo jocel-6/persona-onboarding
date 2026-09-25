@@ -229,6 +229,23 @@ async def main() -> None:
         await wait_for(lambda: not call.bot_speaking, 30, "things to settle")
         await asyncio.sleep(1.0)
 
+        # 4b. Interrupt again the way real people do ("No. No. No."), then expect a reply.
+        #     This once deadlocked the call: it went silent after an interruption.
+        if "nono" not in audio:
+            audio["nono"] = tts(s, "No. No. No. No. That's not what I meant.")
+            audio["ask"] = tts(s, "Can you tell me a bit about how you'd help with my calendar?")
+        log("YOU: Can you tell me a bit about how you'd help with my calendar?")
+        mic.say(audio["ask"])
+        await wait_for(lambda: call.bot_speaking, 20, "a reply to start")
+        await asyncio.sleep(1.0)
+        n = call.turns_done
+        log("YOU (cutting in): No. No. No. No. That's not what I meant.")
+        mic.say(audio["nono"])
+        replied = await wait_for(lambda: call.turns_done >= n + 2, 20, "a reply after 'No. No. No.'")
+        log(f"   -> replied after repeated interruption? {replied}")
+        await wait_for(lambda: not call.bot_speaking, 30, "things to settle")
+        await asyncio.sleep(1.0)
+
         # 5. Silence: expect a gentle check-in
         n = call.turns_done
         log(f"(staying silent for {s.silence_checkin_secs + 4:.0f}s)")

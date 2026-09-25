@@ -181,3 +181,24 @@ def test_short_answer_streak_resets():
     assert s.short_answer_streak == 2
     orch.before_user_turn(s, "honestly I just need help keeping up with email")
     assert s.short_answer_streak == 0
+
+
+def test_name_is_asked_lightly_after_the_first_answer_on_the_call():
+    from app.state import Turn
+
+    s = OnboardingState(agent_name="Ollie", call_status="in_progress", channel="voice")
+    assert "don't ask for it on its own" in orch.directors_note(s, channel="voice")  # the opener stays curious
+    s.transcript.append(Turn(role="user", text="honestly work has been a lot", channel="voice"))
+    note = orch.directors_note(s, channel="voice")
+    assert "who am I talking to" in note and "Discover what they need" in note
+
+
+def test_an_ended_call_cannot_be_revived_by_a_late_connect():
+    from app.events import apply_event
+
+    s = OnboardingState(agent_name="Kai", call_status="hung_up", channel="text")
+    text, _ = apply_event(s, "call_connected", {})
+    assert text is None and s.call_status == "hung_up" and s.channel == "text"
+    s.call_status = "ringing"
+    text, _ = apply_event(s, "call_connected", {})
+    assert text and s.call_status == "in_progress"

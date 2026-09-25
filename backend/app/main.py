@@ -161,9 +161,9 @@ async def _deep_insights_later(session_id: str) -> None:
     from .google import describe_snapshot, user_zone
     from .insights import describe_insights
 
-    await asyncio.sleep(0.5)  # let the connect event land first
     state = store.get(session_id)
     if state is None or not state.account_snapshot or state.deep_insights:
+        log.info("deep insights skipped for session %s (no snapshot yet, or already done)", session_id[:8])
         return
     now = datetime.now(timezone.utc).astimezone(user_zone(state.user_tz))
     found = await find_deep_insights(
@@ -287,6 +287,11 @@ async def _stream_turn(
         store.save(state)
         yield _sse({"type": "state", "state": state.public_view()})
         yield _sse({"type": "end"})
+        # #6: start the deep look only once the snapshot is saved (it used to start before, find
+        # nothing, and quietly give up).
+        if event is not None and event.type == "gmail_connected" and settings.deep_insights \
+                and state.gmail_status == "connected" and state.account_snapshot and not state.deep_insights:
+            asyncio.create_task(_deep_insights_later(session_id))
     if spoken_on is not None and event_text:
         await spoken_on.say_event(event_text)
 
@@ -515,8 +520,6 @@ async def post_event(session_id: str, body: EventIn) -> StreamingResponse:
         body.data["result"] = await _add_pending_event(session_id)
     if body.type == "draft_confirmed":
         body.data["result"] = await _save_pending_draft(session_id, str(body.data.get("body") or ""))
-    if body.type == "gmail_connected" and settings.deep_insights:
-        asyncio.create_task(_deep_insights_later(session_id))
     if body.type == "hangup":
         # Stop the audio pipeline first so a half-spoken turn can't race the text follow-up.
         from .voice.call import end_call

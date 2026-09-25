@@ -374,3 +374,20 @@ def test_draft_reply_is_written_shown_and_saved_only_on_tap(monkeypatch):
     assert saved == [("at", "jordan@example.com", "Re: Saturday plans?", "demo-thread-jordan", "Edited by me.")]
     st = runtime.store.get(sid)
     assert st.pending_draft is None and st.saved_drafts[0]["to_name"] == "Jordan"
+
+
+def test_deep_insights_start_after_the_snapshot_is_saved(monkeypatch):
+    calls = []
+
+    async def fake_deep(session_id):
+        calls.append(runtime.store.get(session_id).account_snapshot is not None)
+
+    monkeypatch.setattr(main, "_deep_insights_later", fake_deep)
+    monkeypatch.setattr(main, "settings", dataclasses.replace(main.settings, deep_insights=True))
+    from tests.test_brain import FakeClient
+
+    main.brain.client = FakeClient([("Connected!", None, "end_turn")])
+    c = TestClient(main.app)
+    sid = c.post("/api/sessions").json()["state"]["session_id"]
+    c.post(f"/api/sessions/{sid}/events", json={"type": "gmail_connected", "data": {"demo": True}})
+    assert calls == [True]  # it ran, and the snapshot was already there

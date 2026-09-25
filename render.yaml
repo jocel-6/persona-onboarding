@@ -16,7 +16,9 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: LLM_MODEL
-        value: claude-sonnet-5
+        value: claude-haiku-4-5  # what the evals and live calls were tuned on; fastest replies
+      - key: STT_ENGINE
+        value: flux              # Deepgram Flux: its own turn detection + speculative replies
       - key: DEEPGRAM_API_KEY
         sync: false
       - key: CARTESIA_API_KEY
@@ -35,3 +37,5 @@ services:
         sync: false        # https://<your-frontend>.vercel.app
       - key: ICE_SERVERS
         sync: false        # JSON with a TURN server; see docs/DEPLOY.md
+      - key: METRICS_TOKEN
+        generateValue: true  # /api/metrics (costs, funnel) needs ?token=...; Render shows the value

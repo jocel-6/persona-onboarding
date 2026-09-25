@@ -1,8 +1,9 @@
 """Google sign-in and the read-only account snapshot behind the value moment.
 
 Privacy by construction:
-  * Scopes: sign-in, read-only calendar events, and gmail.metadata, which can read
-    headers (subject, sender) but cannot open message bodies at all.
+  * Scopes: sign-in, calendar events (read, plus adding events the user confirms on
+    screen), and gmail.metadata, which can read headers (subject, sender) but cannot
+    open message bodies at all.
   * One snapshot right after connecting: the next ~10 calendar events and ~20 recent
     inbox subject lines. Anything that looks medical, financial, or otherwise private
     is dropped before the model ever sees it.
@@ -31,7 +32,7 @@ SCOPES = [
     "openid",
     "email",
     "profile",
-    "https://www.googleapis.com/auth/calendar.events.readonly",
+    "https://www.googleapis.com/auth/calendar.events",
     "https://www.googleapis.com/auth/gmail.metadata",
 ]
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -108,6 +109,50 @@ def granted_all_scopes(token: dict[str, Any]) -> list[str]:
     """Scopes the user unticked on the consent screen (Google lets them)."""
     granted = set((token.get("scope") or "").split())
     return [s for s in SCOPES if s.startswith("https://") and s not in granted]
+
+
+WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.events"
+
+
+def can_add_events(token: dict[str, Any]) -> bool:
+    """Connections made before calendar writes existed only have the read-only scope."""
+    return WRITE_SCOPE in (token.get("scope") or "").split()
+
+
+async def fresh_access_token(client_id: str, client_secret: str, token: dict[str, Any]) -> dict[str, Any]:
+    """Access tokens last an hour; refresh when close to expiry. Returns the (possibly updated) token."""
+    if token.get("expires_at", 0) > time.time() + 60 or not token.get("refresh_token"):
+        return token
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.post(
+            TOKEN_URL,
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": token["refresh_token"],
+                "grant_type": "refresh_token",
+            },
+        )
+        r.raise_for_status()
+        new = r.json()
+    return {**token, **new, "expires_at": time.time() + float(new.get("expires_in", 3600))}
+
+
+async def insert_event(access_token: str, event: dict[str, Any]) -> dict[str, Any]:
+    """Create a calendar event. Only ever called after the user tapped Add on screen."""
+    body: dict[str, Any] = {"summary": event["title"]}
+    if event.get("all_day"):
+        body["start"] = {"date": event["start"][:10]}
+        body["end"] = {"date": event["end"][:10]}
+    else:
+        body["start"] = {"dateTime": event["start"], "timeZone": event["tz"]}
+        body["end"] = {"dateTime": event["end"], "timeZone": event["tz"]}
+    if event.get("location"):
+        body["location"] = event["location"]
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.post(CALENDAR_URL, json=body, headers={"Authorization": f"Bearer {access_token}"})
+        r.raise_for_status()
+        return r.json()
 
 
 async def revoke(token: str) -> None:

@@ -117,3 +117,58 @@ def mood_cue(text: str) -> str | None:
 def is_short_answer(text: str) -> bool:
     """Three words or fewer: a hint the user may be rushed, not proof."""
     return len(re.findall(r"\w+", text)) <= 3
+
+
+def check_event(args: dict, tz_name: str | None, now=None) -> tuple[dict | None, str | None]:
+    """Validate a proposed calendar event. Times are the user's local wall-clock time."""
+    from datetime import datetime, timedelta, timezone
+
+    from .google import user_zone
+
+    title = clean(str(args.get("title") or ""))
+    if not title:
+        return None, "missing title"
+    if len(title) > 120:
+        return None, "title too long; keep it short"
+    tz = user_zone(tz_name)
+    now = (now or datetime.now(timezone.utc)).astimezone(tz)
+    raw = str(args.get("start") or "").strip()
+    all_day = bool(args.get("all_day")) or len(raw) == 10
+    try:
+        start = datetime.fromisoformat(raw)
+    except ValueError:
+        return None, "start must be local time like 2026-09-26T14:00, or a date like 2026-09-26 for all day"
+    start = start.replace(tzinfo=tz) if start.tzinfo is None else start.astimezone(tz)
+    if all_day:
+        start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+        days = max(1, min(int(args.get("days") or 1), 7))
+        end = start + timedelta(days=days)
+        if start.date() < now.date():
+            return None, "that date has already passed; check the date with them"
+    else:
+        minutes = int(args.get("duration_minutes") or 60)
+        if not 5 <= minutes <= 12 * 60:
+            return None, "duration must be between 5 minutes and 12 hours"
+        end = start + timedelta(minutes=minutes)
+        if start < now - timedelta(minutes=5):
+            return None, "that time has already passed; check the day and time with them"
+    if start > now + timedelta(days=366):
+        return None, "more than a year out; check the date with them"
+    location = clean(str(args.get("location") or ""))[:120] or None
+    if all_day:
+        when = start.strftime("%a %b %-d") + ("" if (end - start).days == 1 else f" to {(end - timedelta(days=1)).strftime('%a %b %-d')}") + ", all day"
+    else:
+        t0 = start.strftime("%-I:%M%p").lower().replace(":00", "")
+        t1 = end.strftime("%-I:%M%p").lower().replace(":00", "")
+        if t0[-2:] == t1[-2:] and start.date() == end.date():
+            t0 = t0[:-2]  # "2–3pm", not "2pm–3pm"
+        when = f"{start.strftime('%a %b %-d')}, {t0}–{t1}"
+    return {
+        "title": title,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "tz": tz_name or "UTC",
+        "all_day": all_day,
+        "location": location,
+        "when": when,
+    }, None

@@ -1,6 +1,7 @@
 """Brain loop tests with a scripted fake of the Anthropic streaming client."""
 
 import asyncio
+import json
 from types import SimpleNamespace as NS
 
 from app.brain import Brain
@@ -151,3 +152,19 @@ def test_skip_request_graduates_even_if_the_model_forgets():
     events = run(brain, s, user_text="can I just skip the setup and start using it?")
     assert s.graduated
     assert {"type": "ui", "ui": {"type": "graduated"}} in events
+
+
+def test_no_em_dashes_in_what_users_see_or_hear():
+    from app.brain import no_em_dashes
+
+    assert no_em_dashes("Sure—I can help") == "Sure, I can help"
+    assert no_em_dashes("School emails — got it.") == "School emails, got it."
+    assert no_em_dashes("2–3 ideas") == "2–3 ideas"  # en dash in a range is fine
+
+    client = FakeClient([("Got it—inbox chaos. Want a hand?", None, "end_turn")])
+    brain = Brain(Settings(), client=client)
+    s = OnboardingState(agent_name="Kai")
+    events = run(brain, s, user_text="my inbox is a mess")
+    streamed = "".join(e["text"] for e in events if e["type"] == "delta")
+    assert "—" not in streamed and "—" not in s.transcript[-1].text
+    assert "—" not in json.dumps(s.messages[-1], ensure_ascii=False)

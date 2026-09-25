@@ -15,6 +15,7 @@ import {
   type StreamEvent,
   type TurnLatency,
   type TurnUsage,
+  type CalendarEvent,
   type UiEvent,
 } from "@/lib/api";
 import { startVoiceCall, type VoiceCall } from "@/lib/voice";
@@ -518,6 +519,15 @@ export default function Onboarding() {
               </div>
             )}
 
+            {session?.pending_event && callView === "none" && (
+              <EventConfirmCard
+                event={session.pending_event}
+                demo={session.gmail_demo}
+                onAdd={() => sendEvent("event_confirmed")}
+                onCancel={() => sendEvent("event_cancelled")}
+              />
+            )}
+
             {session && showRecap(session) && !graduated && !recapDismissed && callView === "none" && (
               <RecapCard
                 s={session}
@@ -573,9 +583,17 @@ export default function Onboarding() {
           note={callNote ?? (config.voice ? null : "Voice isn't set up on this server, so type to talk.")}
           onReady={session?.wrapping_up && !graduated ? () => sendEvent("graduate") : undefined}
           gmail={
-            gmailCard ? (
-              <GmailCard {...gmailCardProps} compact />
-            ) : null
+            <>
+              {session?.pending_event && (
+                <EventConfirmCard
+                  event={session.pending_event}
+                  demo={session.gmail_demo}
+                  onAdd={() => sendEvent("event_confirmed")}
+                  onCancel={() => sendEvent("event_cancelled")}
+                />
+              )}
+              {gmailCard ? <GmailCard {...gmailCardProps} compact /> : null}
+            </>
           }
         />
       )}
@@ -898,6 +916,42 @@ function CallScreen({
   );
 }
 
+/** "Nothing happens without your yes": the agent proposes, only this tap adds it. */
+function EventConfirmCard({
+  event,
+  demo,
+  onAdd,
+  onCancel,
+}: {
+  event: CalendarEvent;
+  demo: boolean;
+  onAdd: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="card event-card">
+      <div>
+        <p className="small muted" style={{ margin: 0 }}>
+          Add to your {demo ? "demo " : ""}calendar?
+        </p>
+        <strong>{event.title}</strong>
+        <p className="small" style={{ margin: "2px 0 0" }}>
+          {event.when}
+          {event.location ? ` · ${event.location}` : ""}
+        </p>
+      </div>
+      <div className="row">
+        <button className="primary" onClick={onAdd}>
+          Add
+        </button>
+        <button className="ghost" onClick={onCancel}>
+          Not now
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Show the recap once a call has ended (it's the "post-call text"), and at graduation. */
 function showRecap(s: SessionState): boolean {
   const talkedOnCall = s.transcript.some((t) => t.role === "user" && t.channel === "voice");
@@ -1059,10 +1113,10 @@ function DebugPanel({ s, latency, usage }: { s: SessionState; latency: TurnLaten
   const cached = usage?.cache_read_input_tokens ?? 0;
   const fresh = (usage?.input_tokens ?? 0) + (usage?.cache_creation_input_tokens ?? 0);
   const rows: [string, string][] = [
-    ["agent_name", s.agent_name ?? "—"],
-    ["user_name", s.user_name ?? "—"],
-    ["help_topic", s.help_topic ?? "—"],
-    ["gmail", `${s.gmail ?? "—"} (${s.gmail_status})`],
+    ["agent_name", s.agent_name ?? "–"],
+    ["user_name", s.user_name ?? "–"],
+    ["help_topic", s.help_topic ?? "–"],
+    ["gmail", `${s.gmail ?? "–"} (${s.gmail_status})`],
     ["channel", s.channel],
     ["call_status", s.call_status],
     ["sentiment", s.sentiment],
@@ -1070,9 +1124,9 @@ function DebugPanel({ s, latency, usage }: { s: SessionState; latency: TurnLaten
     ["turns_since_progress", String(s.turns_since_progress)],
     ["graduation_offered", String(s.graduation_offered)],
     ["graduated", String(s.graduated)],
-    ["corrected", s.corrected.join(", ") || "—"],
-    ["last turn", latency ? `first token ${latency.ttft_ms ?? "—"}ms · total ${latency.total_ms}ms` : "—"],
-    ["prompt cache", usage ? `${cached.toLocaleString()} cached / ${fresh.toLocaleString()} new tokens` : "—"],
+    ["corrected", s.corrected.join(", ") || "–"],
+    ["last turn", latency ? `first token ${latency.ttft_ms ?? "–"}ms · total ${latency.total_ms}ms` : "–"],
+    ["prompt cache", usage ? `${cached.toLocaleString()} cached / ${fresh.toLocaleString()} new tokens` : "–"],
   ];
   return (
     <aside className="debug" aria-label="Session state">

@@ -36,8 +36,12 @@ export type SessionState = {
   graduated: boolean;
   corrected: string[];
   last_director_note: string | null;
+  pending_event: CalendarEvent | null;
+  added_events: CalendarEvent[];
   transcript: Turn[];
 };
+
+export type CalendarEvent = { title: string; when: string; location?: string | null; all_day?: boolean };
 
 export type UiEvent =
   | { type: "name_suggestions"; names: string[] }
@@ -52,6 +56,8 @@ export type UiEvent =
   | { type: "wrap_up" }
   | { type: "suggestions"; items: string[] }
   | { type: "graduated" }
+  | { type: "confirm_event"; event: CalendarEvent }
+  | { type: "event_added"; event: CalendarEvent }
   | { type: "slot"; slot: string; value: string };
 
 export type TurnLatency = { ttft_ms: number | null; total_ms: number };
@@ -83,6 +89,8 @@ export type EventType =
   | "gmail_denied"
   | "gmail_disconnected"
   | "graduate"
+  | "event_confirmed"
+  | "event_cancelled"
   | "resumed";
 
 export type Config = {

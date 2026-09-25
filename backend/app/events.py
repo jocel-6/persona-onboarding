@@ -25,6 +25,8 @@ EventType = Literal[
     "gmail_denied",
     "gmail_disconnected",
     "graduate",
+    "event_confirmed",
+    "event_cancelled",
     "resumed",
 ]
 
@@ -166,6 +168,39 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
             "the user closed the Google sign-in without connecting. No guilt: say they can connect it later, and "
             "keep going." + hint
         ), ui
+
+    if t == "event_confirmed":
+        ev = state.pending_event
+        if not ev:
+            return None, ui
+        result = str(data.get("result") or "error")
+        if result in ("added", "demo_added"):
+            state.pending_event = None
+            state.added_events.append({**ev, "demo": result == "demo_added"})
+            if state.account_snapshot is not None:
+                state.account_snapshot.setdefault("events", []).append({"title": ev["title"], "start": ev["start"]})
+            orch.add_event_turn(state, f"Added to calendar: {ev['title']}, {ev['when']}")
+            ui.append({"type": "event_added", "event": ev})
+            where = "the demo calendar" if result == "demo_added" else "their calendar"
+            return f"they tapped Add: {ev['title']!r} ({ev['when']}) is now on {where}. Confirm in one short line.", ui
+        if result == "needs_permission":
+            state.gmail_card_shown = True
+            ui.append({"type": "show_gmail_card"})
+            return (
+                f"adding {ev['title']!r} didn't go through because their Google connection predates calendar "
+                "access. Ask them to tap Connect Gmail once more to allow adding events, then tap Add again. "
+                "Keep it light, one or two sentences."
+            ), ui
+        return (
+            f"adding {ev['title']!r} didn't go through just now. Don't read out errors; say it didn't save and "
+            "offer to try again in a moment."
+        ), ui
+
+    if t == "event_cancelled":
+        ev, state.pending_event = state.pending_event, None
+        if not ev:
+            return None, ui
+        return f"they tapped Not now on adding {ev['title']!r}. No problem; one short line, then move on.", ui
 
     if t == "graduate":
         orch.graduate(state)

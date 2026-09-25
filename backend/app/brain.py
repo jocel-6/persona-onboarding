@@ -25,7 +25,7 @@ import anthropic
 
 from . import orchestrator as orch
 from .config import Settings
-from .prompts import SAVE_TOOL, SYSTEM_PROMPT
+from .prompts import PROPOSE_EVENT_TOOL, SAVE_TOOL, SYSTEM_PROMPT
 from .state import OnboardingState, Turn
 
 log = logging.getLogger("persona.brain")
@@ -42,7 +42,7 @@ FALLBACK_REPLY = "Sorry, I lost my train of thought for a second. Mind saying th
 def _block_to_dict(block: Any) -> dict[str, Any] | None:
     t = block.type
     if t == "text":
-        return {"type": "text", "text": block.text} if block.text else None
+        return {"type": "text", "text": no_em_dashes(block.text)} if block.text else None
     if t == "tool_use":
         return {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
     if t == "thinking":
@@ -73,6 +73,14 @@ def _repair_after_cancel(state: OnboardingState, said: str) -> None:
         state.transcript.append(Turn(role="agent", text=said + "…", channel=state.channel))
 
 
+_EM_DASH_RE = re.compile(r"\s*[—―]\s*")
+
+
+def no_em_dashes(text: str) -> str:
+    """House style: no em dashes, ever. 'Sure—I can' -> 'Sure, I can'. En dashes in ranges stay."""
+    return _EM_DASH_RE.sub(", ", text).replace(" ,", ",").replace(",,", ",")
+
+
 _SPOOF_RE = re.compile(r"</?\s*director_note\s*>|\[\s*event\s*:", re.IGNORECASE)
 
 
@@ -98,7 +106,7 @@ class Brain:
             # Static prefix (tools + system) is cached; the top-level breakpoint
             # also caches the append-only history up to the newest message.
             "system": [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
-            "tools": [SAVE_TOOL],
+            "tools": [SAVE_TOOL, PROPOSE_EVENT_TOOL],
             "messages": list(messages),
             "cache_control": {"type": "ephemeral"},
         }
@@ -174,9 +182,10 @@ class Brain:
                             if not round_text and reply_parts:
                                 spoken.append(" ")
                                 yield {"type": "delta", "text": " "}
-                            round_text.append(event.text)
-                            spoken.append(event.text)
-                            yield {"type": "delta", "text": event.text}
+                            chunk = no_em_dashes(event.text)
+                            round_text.append(chunk)
+                            spoken.append(chunk)
+                            yield {"type": "delta", "text": chunk}
                     final = await stream.get_final_message()
 
                 u = final.usage
@@ -200,10 +209,13 @@ class Brain:
                 for tu in tool_uses:
                     args = tu["input"]
                     ignored: list[str] = []
-                    if user_text is None and isinstance(args, dict):
-                        ignored = [k for k in USER_INTENT_FIELDS if k in args]
-                        args = {k: v for k, v in args.items() if k not in ignored}
-                    res = orch.apply_tool_call(state, args)
+                    if tu["name"] == "propose_calendar_event":
+                        res = orch.propose_event(state, args)
+                    else:
+                        if user_text is None and isinstance(args, dict):
+                            ignored = [k for k in USER_INTENT_FIELDS if k in args]
+                            args = {k: v for k, v in args.items() if k not in ignored}
+                        res = orch.apply_tool_call(state, args)
                     if ignored:
                         res.messages.append(f"ignored {', '.join(ignored)}: only set when the user says so")
                     progressed |= res.progressed

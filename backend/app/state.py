@@ -64,6 +64,11 @@ class OnboardingState(BaseModel):
 
     value_moment_done: bool = False
 
+    # Calendar: an event the agent proposed, waiting for the user's tap on the confirm card,
+    # and the ones they confirmed. Nothing is written to their calendar without that tap.
+    pending_event: dict[str, Any] | None = None
+    added_events: list[dict[str, Any]] = Field(default_factory=list)
+
     # Wrap-up: after they accept graduation, tailored starters + tips + "any questions?"
     wrapping_up: bool = False
     starter_suggestions: list[str] = Field(default_factory=list)

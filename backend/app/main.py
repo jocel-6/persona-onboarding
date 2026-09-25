@@ -80,7 +80,10 @@ OPENERS = [
 ]
 
 # Events that, during a live voice call, should be spoken on the call rather than texted.
-SPOKEN_DURING_CALL = {"gmail_connected", "gmail_closed", "gmail_denied", "gmail_popup_opened", "graduate"}
+SPOKEN_DURING_CALL = {
+    "gmail_connected", "gmail_closed", "gmail_denied", "gmail_popup_opened", "graduate",
+    "event_confirmed", "event_cancelled",
+}
 
 
 class MessageIn(BaseModel):
@@ -124,6 +127,33 @@ def _config() -> dict[str, Any]:
         "voice_problem": problem,
         "ice_servers": settings.ice_servers(),
     }
+
+
+async def _add_pending_event(session_id: str) -> str:
+    """The user tapped Add: write the pending event to their calendar. Never called by the model."""
+    import httpx
+
+    state = _load(session_id)
+    ev = state.pending_event
+    if not ev:
+        return "none"
+    if state.gmail_demo or settings.gmail_stub:
+        return "demo_added"
+    tokens = store.get_tokens(session_id)
+    if not tokens or not google.can_add_events(tokens):
+        return "needs_permission"
+    try:
+        tokens = await google.fresh_access_token(settings.google_client_id, settings.google_client_secret, tokens)
+        store.save_tokens(session_id, tokens)
+        await google.insert_event(tokens["access_token"], ev)
+        log.info("calendar event added for session %s", session_id[:8])
+        return "added"
+    except httpx.HTTPStatusError as e:
+        log.warning("calendar insert failed for session %s: HTTP %s", session_id[:8], e.response.status_code)
+        return "needs_permission" if e.response.status_code in (401, 403) else "error"
+    except httpx.HTTPError:
+        log.exception("calendar insert failed for session %s", session_id[:8])
+        return "error"
 
 
 async def _revoke_google(session_id: str) -> None:
@@ -256,6 +286,8 @@ async def post_event(session_id: str, body: EventIn) -> StreamingResponse:
     _load(session_id)
     if body.type == "gmail_disconnected":
         await _revoke_google(session_id)
+    if body.type == "event_confirmed":
+        body.data["result"] = await _add_pending_event(session_id)
     if body.type == "hangup":
         # Stop the audio pipeline first so a half-spoken turn can't race the text follow-up.
         from .voice.call import end_call

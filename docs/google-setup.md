@@ -20,7 +20,7 @@ Google renames its console menus now and then. If a label below doesn't match, t
 3. App name: `Persona (test)`. User support email and developer contact: your email. Save.
 4. **Scopes / Data Access → Add or remove scopes.** Add exactly these (paste into the filter box):
    - `openid`, `.../auth/userinfo.email`, `.../auth/userinfo.profile`
-   - `https://www.googleapis.com/auth/calendar.events.readonly`
+   - `https://www.googleapis.com/auth/calendar.events` (read events, and add ones the user confirms on screen)
    - `https://www.googleapis.com/auth/gmail.metadata`
 
    `gmail.metadata` reads headers only (subject, sender, date), never message bodies, which is why Persona uses it. Google lists it as a "restricted" scope; that's fine in Testing mode.
@@ -53,7 +53,7 @@ Restart `./dev.sh`. The app switches from the stand-in to real Google sign-in au
 ## What happens with the data
 - Persona reads the next ~10 calendar events and ~20 recent inbox subject lines, once, right after you connect. Anything that looks medical, financial, or otherwise private is filtered out before the model sees it.
 - Tokens are stored only on the server (a separate table, never in the browser or sent to the model), and are revoked and deleted when you click **Disconnect** or the session is reset.
-- Nothing is sent, changed, or deleted in your account. Email contents are never read or logged.
+- The only thing Persona ever writes is a calendar event you approve by tapping **Add** on its confirm card. Nothing is sent, edited, or deleted. Email contents are never read or logged.
 
 ## Troubleshooting
 | You see | Why | Fix |

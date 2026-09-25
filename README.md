@@ -101,13 +101,15 @@ Voice is picked with data (`backend/scripts/voices.py`): `list` shows real voice
 
 The user signs in with Google in a popup, mid-call if they like, while the conversation keeps going. The agent then mentions one real thing ("I see you've got the dentist Thursday") tied to what they need help with, and offers one concrete action. It only offers; nothing happens without a yes.
 
-- **Scopes, as small as possible:** sign-in, `calendar.events.readonly`, and `gmail.metadata`. The Gmail scope reads headers (subject, sender) and **cannot open email bodies at all**, so "we never read your email" is enforced by Google, not just promised.
+- **Scopes, as small as possible:** sign-in, `calendar.events` (read, and add events the user approves), and `gmail.metadata`. The Gmail scope reads headers (subject, sender) and **cannot open email bodies at all**, so "we never read your email" is enforced by Google, not just promised.
 - **What's read:** once, right after connecting: the next ~10 events (3 weeks out) and ~20 recent inbox subject lines. Anything that looks medical, financial, or otherwise private (lab results, bank statements, verification codes, …) is filtered out in code before the model sees it (`backend/app/google.py`).
 - **Where tokens live:** a server-side table only, never in session state, the browser, or the model. **Disconnect** (top bar or recap) revokes the token with Google and deletes it; resetting the session does the same.
 - **Only the server can say "connected":** the OAuth callback records the result; the browser can't claim a connection. Google's pages can cut the popup's link back to the app, so the app polls for the result instead of relying on the popup.
 - **Failure cases:** closed popup or denied access (no guilt, offered once more later), unticked permissions (treated as not connected, said plainly), account not on the test list (explained, with demo data or skipping offered), empty calendar (value moment falls back to what they said), API errors (retried once, then skipped silently).
 - **Testing mode:** Google only lets listed test users sign in until the app is verified (which takes weeks). Setup and test users: [docs/google-setup.md](docs/google-setup.md).
 - **Demo data:** "Can't sign in? Use demo data" connects a clearly labeled sample calendar and inbox, and the agent says it's demo data when it uses it. Off unless the user picks it.
+
+- **Adding to the calendar, only with a yes:** "add a park picnic Saturday at 2" makes the agent *propose* an event (validated in code, resolved in the user's timezone). A confirm card shows "Park picnic · Sat Sep 26, 2–3pm · Add / Not now", on screen and mid-call. Only the tap writes to Google Calendar, from the server; the model has no way to add anything itself. People who connected before this permission existed are asked to reconnect once.
 
 ## Recap (Phase 4)
 

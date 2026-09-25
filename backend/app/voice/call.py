@@ -113,6 +113,8 @@ class BrainService(FrameProcessor):
         self._t_turn_end: float | None = None
         self._t_first_token: float | None = None
         self._audio_started = False
+        self._cancelled_by_user = False
+        self._carryover: str | None = None  # a fragment waiting to be joined with the rest of the sentence
         # Which assistant message / transcript line the last voice turn produced,
         # so a barge-in trims exactly that one (never a later text reply).
         self._last_turn_ref: tuple[int, int] | None = None
@@ -133,7 +135,9 @@ class BrainService(FrameProcessor):
             # otherwise it was just a mid-thought pause and we simply wait for the rest.
             if self._turn and not self._turn.done() and self._audio_started:
                 self._was_interrupted = True
+            self._cancelled_by_user = True
             await self._cancel_turn()
+            self._cancelled_by_user = False
         elif isinstance(frame, BotStartedSpeakingFrame):
             self._audio_started = True
             if self._t_turn_end is not None:
@@ -154,6 +158,10 @@ class BrainService(FrameProcessor):
 
     async def _run_turn(self, user_text: str | None, event_text: str | None):
         annotations: list[str] = []
+        if user_text is not None and self._carryover:
+            # The start of this thought was cut off by a pause; hear it as one sentence.
+            user_text = f"{self._carryover} {user_text}"
+            self._carryover = None
         if user_text is not None:
             if self._was_interrupted:
                 annotations.append("[you were interrupted: they only heard the start of your last reply]")
@@ -172,6 +180,7 @@ class BrainService(FrameProcessor):
             state = runtime.store.get(sid)
             if state is None or state.call_status != "in_progress":
                 return
+            before = state.model_copy(deep=True)  # to undo a turn that was only a fragment
             gen = runtime.brain.run_turn(state, user_text=user_text, event_text=event_text, annotations=annotations)
             started = finished = False
             try:
@@ -191,7 +200,14 @@ class BrainService(FrameProcessor):
                 finished = True
             finally:
                 await gen.aclose()  # repairs history if we were cut off
-                self._last_turn_ref = (len(state.messages) - 1, len(state.transcript) - 1)
+                if not finished and user_text is not None and self._cancelled_by_user and not self._audio_started:
+                    # They kept talking before hearing a word: that was a fragment of one thought
+                    # ("What" ... "did I mention?"). Undo this turn and merge it into the next.
+                    state = before
+                    self._carryover = user_text
+                    self._last_turn_ref = None
+                else:
+                    self._last_turn_ref = (len(state.messages) - 1, len(state.transcript) - 1)
                 runtime.store.save(state)
                 if finished:
                     if started:
@@ -301,9 +317,15 @@ class VoiceCall:
             webrtc_connection=self.connection,
             params=TransportParams(audio_in_enabled=True, audio_out_enabled=True),
         )
-        stt_settings: dict[str, Any] = {"model": s.stt_model, "interim_results": True, "punctuate": True}
-        if keyterms := self._keyterms():
-            stt_settings["keyterm"] = keyterms  # names transcribed right, every time
+        stt_settings: dict[str, Any] = {
+            "model": s.stt_model,
+            "language": "en",
+            "interim_results": True,
+            "punctuate": True,
+            "smart_format": True,  # "two PM" -> "2 PM", emails and numbers formatted
+            # Names transcribed right every time, plus the words onboarding hears most.
+            "keyterm": [*self._keyterms(), "Persona", "Gmail"],
+        }
         stt = DeepgramSTTService(api_key=s.deepgram_api_key, settings=DeepgramSTTService.Settings(**stt_settings))
         context = LLMContext()
         aggregators = LLMContextAggregatorPair(

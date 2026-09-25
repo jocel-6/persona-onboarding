@@ -258,6 +258,25 @@ def edit_field(state: OnboardingState, field_name: str, raw: str) -> str | None:
     return None
 
 
+def propose_event(state: OnboardingState, args: dict[str, Any]) -> ApplyResult:
+    """The model can only propose; the event is written only when the user taps Add."""
+    res = ApplyResult()
+    if state.gmail_status != "connected":
+        res.rejected.append("calendar isn't connected yet: offer to connect Gmail first (the button adds calendar access)")
+        return res
+    event, reason = v.check_event(args if isinstance(args, dict) else {}, state.user_tz)
+    if event is None:
+        res.rejected.append(f"event: {reason}")
+        return res
+    state.pending_event = event
+    res.ui.append({"type": "confirm_event", "event": event})
+    res.messages.append(
+        f"proposed {event['title']!r} ({event['when']}). A confirm card is on their screen: ask them to tap Add. "
+        "Don't say it's added; the app will tell you."
+    )
+    return res
+
+
 def graduate(state: OnboardingState, res: ApplyResult | None = None) -> None:
     if state.graduated:
         return
@@ -537,13 +556,23 @@ def directors_note(state: OnboardingState, *, channel: str, user_text: str = "")
     if s.gmail_status == "connected" and s.account_snapshot and (value_moment_due(s) or s.wrapping_up or s.graduated):
         snapshot = "Account snapshot (read-only):\n" + describe_snapshot(s.account_snapshot, tz_name=s.user_tz)
 
+    from datetime import datetime, timezone
+
+    from .google import user_zone
+
+    local_now = datetime.now(timezone.utc).astimezone(user_zone(s.user_tz))
     lines = [
+        f"Now: {local_now.strftime('%A, %b %-d, %Y, %-I:%M%p').replace('AM', 'am').replace('PM', 'pm')} ({s.user_tz or 'UTC'})",
         f"Channel: {channel} ({call})",
         f"Filled: {filled}",
         f"Missing: {missing}",
         f"Gmail: {s.gmail_status}" + (" (button on screen)" if s.gmail_card_shown and s.gmail_status != "connected" else ""),
         f"Signals: {'; '.join(signals) if signals else 'none'}",
         f"Graduation: {grad}",
+        *(
+            [f"Waiting on them: the confirm card for {s.pending_event['title']!r} ({s.pending_event['when']}) is on screen."]
+            if s.pending_event else []
+        ),
         "Priority: " + " ".join(_priority(s)),
         "(Written before reading their latest message: if it already answers something above, don't ask it again.)",
         *([snapshot] if snapshot else []),

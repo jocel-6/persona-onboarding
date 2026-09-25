@@ -58,6 +58,7 @@ export default function Onboarding() {
   const [recapDismissed, setRecapDismissed] = useState(false);
   const [insightsDismissed, setInsightsDismissed] = useState(false);
   const [voicePickerDone, setVoicePickerDone] = useState(false);
+  const [knowsOpen, setKnowsOpen] = useState(false);
   const [debug, setDebug] = useState(false);
   const [latency, setLatency] = useState<TurnLatency | null>(null);
   const [usage, setUsage] = useState<TurnUsage | null>(null);
@@ -484,6 +485,11 @@ export default function Onboarding() {
               </button>
             </span>
           )}
+          {session && (
+            <button className="ghost small" onClick={() => setKnowsOpen(true)}>
+              What I know
+            </button>
+          )}
           <button className="ghost small" onClick={() => setDebug((d) => !d)} aria-pressed={debug}>
             {debug ? "Hide" : "Show"} state
           </button>
@@ -695,6 +701,22 @@ export default function Onboarding() {
         <GoogleStubPopup
           onAllow={(email, name) => { setGmailPopup(false); void sendEvent("gmail_connected", { email, name }); }}
           onCancel={() => { setGmailPopup(false); void sendEvent("gmail_closed"); }}
+        />
+      )}
+
+      {knowsOpen && session && (
+        <KnowsPanel
+          s={session}
+          voiceName={config.voice_choices?.find((v) => v.id === session.voice_id)?.name ?? null}
+          onSaved={applyState}
+          onConnectGmail={() => { setKnowsOpen(false); setGmailCard(true); }}
+          onDisconnectGmail={() => sendEvent("gmail_disconnected")}
+          onDeleteAll={async () => {
+            if (!window.confirm("Delete everything Persona knows about you and start over? This can't be undone.")) return;
+            setKnowsOpen(false);
+            await reset();
+          }}
+          onClose={() => setKnowsOpen(false)}
         />
       )}
 
@@ -1007,6 +1029,72 @@ function CallScreen({
             </button>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** #14: everything Persona knows and has done, editable and deletable, in one place. */
+function KnowsPanel({
+  s,
+  voiceName,
+  onDeleteAll,
+  onClose,
+  ...recap
+}: RecapProps & { voiceName: string | null; onDeleteAll: () => void; onClose: () => void }) {
+  const w = s.week_summary;
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="What Persona knows about you">
+      <div className="modal done knows">
+        <h2>What {s.agent_name ?? "Persona"} knows about you</h2>
+        <p className="small muted">Everything it has learned or done. Edit anything, or delete it all.</p>
+
+        <h3>What you told it</h3>
+        <RecapRows s={s} {...recap} />
+        {voiceName && <p className="small muted">Voice: {voiceName}</p>}
+
+        <h3>What it can see</h3>
+        {s.gmail_status === "connected" ? (
+          <p className="small">
+            {s.gmail_demo ? "The demo account" : s.gmail}: read once when you connected
+            {w ? `: ${w.events_this_week} upcoming events and ${w.emails_scanned} email subject lines` : ""}. Never
+            email bodies; medical, financial and private items are skipped.
+          </p>
+        ) : (
+          <p className="small muted">Nothing. Gmail isn&apos;t connected.</p>
+        )}
+
+        <h3>What it did for you</h3>
+        {s.added_events.length || s.saved_drafts.length ? (
+          <ul className="small knows-list">
+            {s.added_events.map((e, n) => (
+              <li key={`e${n}`}>{e.op === "move" ? "Moved" : "Added"} {e.title} ({e.when})</li>
+            ))}
+            {s.saved_drafts.map((d, n) => (
+              <li key={`d${n}`}>Saved a draft reply to {d.to_name} (not sent)</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="small muted">Nothing yet. It only acts when you tap to approve.</p>
+        )}
+
+        <h3>Your data</h3>
+        <p className="small muted">
+          Kept on Persona&apos;s server and deleted after 7 idle days (Google access is revoked first).
+        </p>
+        <div className="row">
+          <a className="button ghost small" href={`${API_URL}/api/sessions/${s.session_id}/export`}>
+            Download my data
+          </a>
+          <button className="ghost small danger" onClick={onDeleteAll}>
+            Delete everything
+          </button>
+        </div>
+        <div className="row end">
+          <button className="primary" onClick={onClose}>
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );

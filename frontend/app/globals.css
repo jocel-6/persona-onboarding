@@ -919,3 +919,72 @@ button.link:hover {
 .draft-card {
   border-left: 3px solid var(--user-bubble);
 }
+
+.knows h3 {
+  margin: 10px 0 0;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.knows-list {
+  margin: 0;
+  padding-left: 18px;
+}
+a.button {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 13px;
+  color: var(--text);
+  text-decoration: none;
+  border: 1px solid var(--border);
+}
+button.danger {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 40%, var(--border));
+}
+
+/* ---- #12 phone-first: notch, home indicator, no zoom-on-focus, bigger tap targets ---- */
+.topbar {
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+.composer {
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+.call {
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+}
+@media (max-width: 600px) {
+  .composer input,
+  .edit-row input,
+  .draft-card textarea {
+    font-size: 16px; /* iOS zooms into inputs under 16px */
+  }
+  button {
+    min-height: 40px;
+  }
+  button.small {
+    min-height: 34px;
+  }
+  .topbar-actions {
+    gap: 4px;
+  }
+  .topbar-actions .pill {
+    display: none;
+  }
+  .call-inner {
+    border-radius: 24px;
+  }
+  .bubble {
+    max-width: 88%;
+  }
+}
+@media (display-mode: standalone) {
+  body {
+    overscroll-behavior: none;
+  }
+}

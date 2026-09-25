@@ -187,6 +187,7 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
                 if e.get("id") == ev.get("event_id"):
                     e["start"], e["end"] = ev["start"], ev["end"]
             orch.refresh_insights(state)  # the conflict it fixed drops off the list
+            state.added_events.append({**ev, "op": "move", "demo": result == "demo_moved"})
             orch.add_event_turn(state, f"Moved {ev['title']} to {ev['when']}")
             ui.append({"type": "event_added", "event": ev})
             where = "on the demo calendar" if result == "demo_moved" else ""

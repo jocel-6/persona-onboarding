@@ -6,6 +6,7 @@
   POST   /api/sessions/{id}/events      app event (call, hangup, Gmail, resume) -> SSE stream
   DELETE /api/sessions/{id}             forget the session
   POST   /api/sessions/{id}/fields      fix a field from the recap (validated, no model call)
+  GET    /api/sessions/{id}/export      everything Persona stored about you, as JSON (no tokens)
   GET    /api/voices/{voice_id}/sample  "Hi, I'm <name>!" in that voice, for the picker
   POST   /api/sessions/{id}/voice       pick the agent's voice
   POST   /api/sessions/{id}/insights/{insight_id}/add   turn a finding's fix into a confirm card
@@ -445,6 +446,29 @@ async def insight_draft(session_id: str, insight_id: str) -> dict[str, Any]:
         }
         store.save(state)
         return {"state": state.public_view()}
+
+
+@app.get("/api/sessions/{session_id}/export")
+def export_session(session_id: str) -> Response:
+    """#14: everything Persona stored about you, in one file. Tokens are never included."""
+    state = _load(session_id)
+    data = {
+        "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "about_you": {k: getattr(state, k) for k in (
+            "agent_name", "user_name", "help_topic", "voice_id", "user_tz", "gmail", "gmail_status",
+        )},
+        "what_it_read": state.account_snapshot,
+        "what_it_noticed": state.insights,
+        "what_it_did_for_you": {"calendar": state.added_events, "drafts": state.saved_drafts},
+        "conversation": [t.model_dump() for t in state.transcript],
+        "retention": f"Deleted after {settings.retention_days:g} idle days; Google access is revoked first.",
+        "google_access_token_stored": bool(store.get_tokens(session_id)),
+    }
+    return Response(
+        json.dumps(data, indent=2, default=str),
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="persona-my-data.json"'},
+    )
 
 
 @app.post("/api/sessions/{session_id}/messages")

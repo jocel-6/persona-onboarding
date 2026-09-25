@@ -95,3 +95,17 @@ def test_voice_picker_only_accepts_offered_voices(monkeypatch):
     st = c.post(f"/api/sessions/{sid}/voice", json={"voice_id": choices[1]["id"]}).json()["state"]
     assert st["voice_id"] == choices[1]["id"] and st["transcript"][-1]["text"] == f"Voice: {choices[1]['name']}"
     assert c.get("/api/voices/not-a-voice/sample?name=Wren").status_code == 404
+
+
+def test_export_has_everything_but_never_tokens():
+    from app import runtime
+
+    c = TestClient(main.app)
+    sid = c.post("/api/sessions").json()["state"]["session_id"]
+    runtime.store.save_tokens(sid, {"access_token": "secret-at", "refresh_token": "secret-rt"})
+    r = c.get(f"/api/sessions/{sid}/export")
+    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+    body = r.text
+    assert "secret-at" not in body and "secret-rt" not in body
+    data = json.loads(body)
+    assert data["google_access_token_stored"] is True and data["conversation"][0]["role"] == "agent"

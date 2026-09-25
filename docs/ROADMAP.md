@@ -31,14 +31,14 @@ Ideas beyond the take-home spec, chosen to make the consumer experience better a
 |---|---|---|---|
 | 10 | **A living profile that builds itself.** A card that fills in with smooth animations as the agent learns: name, need, the shape of their week, first findings. | You watch it get to know you | ✅ |
 | 11 | **Animated voice orb.** An Apple-style orb on the call screen reacting to both voices in real time, with live word-by-word captions. | A polished product, not a demo | ✅ |
-| 12 | **Mobile-first and installable** (PWA: add to home screen, standalone, safe areas). | Matches a phone-first product | ⬜ |
+| 12 | **Mobile-first and installable** (PWA: add to home screen, standalone, safe areas). | Matches a phone-first product | ✅ |
 
 ## D. Make it real-world
 
 | # | Idea | What the user notices | Status |
 |---|---|---|---|
 | 13 | **Real phone calls and texts** (Twilio): Persona calls your number; the recap arrives as an SMS. | The spec's "phone call," literally | ⬜ |
-| 14 | **"What Persona knows about you."** Everything it learned, editable and deletable, in one place. | Trust and transparency, on-brand for "nothing without your yes" | ⬜ |
+| 14 | **"What Persona knows about you."** Everything it learned, editable and deletable, in one place. | Trust and transparency, on-brand for "nothing without your yes" | ✅ |
 
 ## E. Engineering depth
 

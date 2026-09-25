@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -67,6 +68,12 @@ class Settings:
     openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY", ""))
     # Privacy: sessions (and their Google tokens, revoked first) are deleted after this many days idle.
     retention_days: float = field(default_factory=lambda: float(_env("RETENTION_DAYS", "7")))
+    # WebRTC ICE servers for voice, as JSON: [{"urls": "...", "username": "...", "credential": "..."}].
+    # Locally, public STUN is enough. Deployed behind a cloud load balancer, add a TURN server
+    # (see docs/DEPLOY.md) or calls connect with no audio.
+    ice_servers_json: str = field(
+        default_factory=lambda: _env("ICE_SERVERS", '[{"urls": "stun:stun.l.google.com:19302"}]')
+    )
     # End of turn: Smart Turn replies right away when it judges you're done; when it's unsure,
     # wait at most this long in silence. Pipecat's default is 3s, which on real callers meant
     # ~4.5s before every reply (the model often judged finished sentences "incomplete").
@@ -74,6 +81,17 @@ class Settings:
     # Silence on the call: first check-in after this many seconds, then offer text after the second value.
     silence_checkin_secs: float = field(default_factory=lambda: float(_env("SILENCE_CHECKIN_SECS", "5")))
     silence_offer_text_secs: float = field(default_factory=lambda: float(_env("SILENCE_OFFER_TEXT_SECS", "10")))
+
+    def frontend_origins(self) -> list[str]:
+        """FRONTEND_ORIGIN may list several, comma-separated (e.g. the deployed site and localhost)."""
+        return [o.strip().rstrip("/") for o in self.frontend_origin.split(",") if o.strip()]
+
+    def ice_servers(self) -> list[dict]:
+        try:
+            servers = json.loads(self.ice_servers_json)
+            return [s for s in servers if isinstance(s, dict) and s.get("urls")]
+        except ValueError:
+            return [{"urls": "stun:stun.l.google.com:19302"}]
 
     def tts_key(self) -> str:
         return {

@@ -67,7 +67,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Persona onboarding", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+    allow_origins=settings.frontend_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -122,6 +122,7 @@ def _config() -> dict[str, Any]:
         "demo_data": settings.allow_demo_data,
         "voice": problem is None,
         "voice_problem": problem,
+        "ice_servers": settings.ice_servers(),
     }
 
 
@@ -273,9 +274,15 @@ _webrtc_handler: Any = None
 def _handler():
     global _webrtc_handler
     if _webrtc_handler is None:
+        from aiortc import RTCIceServer
         from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCRequestHandler
 
-        _webrtc_handler = SmallWebRTCRequestHandler()
+        _webrtc_handler = SmallWebRTCRequestHandler(
+            ice_servers=[
+                RTCIceServer(urls=s["urls"], username=s.get("username"), credential=s.get("credential"))
+                for s in settings.ice_servers()
+            ]
+        )
     return _webrtc_handler
 
 
@@ -336,7 +343,7 @@ _oauth_states: dict[str, tuple[str, float]] = {}
 def _popup_result(payload: dict[str, Any]) -> HTMLResponse:
     """Tiny page that tells the app how sign-in went, then closes itself."""
     data = json.dumps({"source": "persona-google", **payload})
-    origin = json.dumps(settings.frontend_origin)
+    origin = json.dumps(settings.frontend_origins()[0] if settings.frontend_origins() else "*")
     msg = "Connected! You can close this window." if payload.get("ok") else "Not connected. You can close this window."
     return HTMLResponse(
         f"""<!doctype html><meta charset="utf-8"><title>Persona</title>

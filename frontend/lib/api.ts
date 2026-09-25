@@ -91,6 +91,7 @@ export type Config = {
   demo_data?: boolean;
   voice?: boolean;
   voice_problem?: string | null;
+  ice_servers?: RTCIceServer[];
 };
 
 export async function createSession(): Promise<{ state: SessionState; ui: UiEvent[]; config: Config }> {

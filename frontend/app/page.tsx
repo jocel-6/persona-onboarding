@@ -405,7 +405,7 @@ export default function Onboarding() {
           setCallView("none");
           void sendEvent("hangup");
         },
-      });
+      }, config.ice_servers);
       setVoiceLive(true);
     } catch {
       // Mic blocked or voice server unreachable: keep the call going by typing.

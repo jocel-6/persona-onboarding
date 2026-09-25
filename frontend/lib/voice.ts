@@ -28,14 +28,18 @@ export type VoiceCall = {
 };
 
 /** Connect the browser mic/speaker to the voice agent over WebRTC. */
-export async function startVoiceCall(sessionId: string, h: VoiceHandlers): Promise<VoiceCall> {
+export async function startVoiceCall(
+  sessionId: string,
+  h: VoiceHandlers,
+  iceServers?: RTCIceServer[],
+): Promise<VoiceCall> {
   const audio = new Audio();
   audio.autoplay = true;
   let closing = false;
   let heardSomething = false;
 
   const client = new PipecatClient({
-    transport: new SmallWebRTCTransport(),
+    transport: new SmallWebRTCTransport(iceServers?.length ? { iceServers } : undefined),
     enableMic: true,
     enableCam: false,
     callbacks: {

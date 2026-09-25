@@ -1,0 +1,37 @@
+# Render Blueprint: the backend as a Docker web service with a persistent disk for sessions.
+# New > Blueprint > pick this repo. Secrets are entered in the dashboard (sync: false).
+services:
+  - type: web
+    name: persona-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: starter            # always on (free instances sleep, which drops calls)
+    healthCheckPath: /api/health
+    disk:
+      name: persona-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: claude-sonnet-5
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: CARTESIA_API_KEY
+        sync: false
+      - key: TTS_PROVIDER
+        value: cartesia
+      - key: TTS_VOICE_ID
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false        # https://<your-backend>.onrender.com/api/google/callback
+      - key: FRONTEND_ORIGIN
+        sync: false        # https://<your-frontend>.vercel.app
+      - key: ICE_SERVERS
+        sync: false        # JSON with a TURN server; see docs/DEPLOY.md

@@ -76,3 +76,22 @@ def test_recap_edit_validates_and_tells_the_model():
     sse(c.post(f"/api/sessions/{sid}/messages", json={"text": "cool"}))
     sent = json.dumps(fake.calls[-1]["messages"][-1])
     assert "edited their name in the recap" in sent  # the model hears about it once
+
+
+def test_voice_picker_only_accepts_offered_voices(monkeypatch):
+    import dataclasses
+
+    from app import runtime
+
+    s = dataclasses.replace(runtime.settings, tts_provider="cartesia", cartesia_api_key="k")
+    monkeypatch.setattr(runtime, "settings", s)
+    monkeypatch.setattr(main, "settings", s)
+    c = TestClient(main.app)
+    created = c.post("/api/sessions").json()
+    choices = created["config"]["voice_choices"]
+    assert len(choices) == 3 and all(v["name"] for v in choices)
+    sid = created["state"]["session_id"]
+    assert c.post(f"/api/sessions/{sid}/voice", json={"voice_id": "not-a-voice"}).status_code == 422
+    st = c.post(f"/api/sessions/{sid}/voice", json={"voice_id": choices[1]["id"]}).json()["state"]
+    assert st["voice_id"] == choices[1]["id"] and st["transcript"][-1]["text"] == f"Voice: {choices[1]['name']}"
+    assert c.get("/api/voices/not-a-voice/sample?name=Wren").status_code == 404

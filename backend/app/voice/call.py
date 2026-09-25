@@ -433,6 +433,11 @@ class VoiceCall:
         self._fallback: asyncio.TimerHandle | None = None
         self._trim_task: asyncio.Task | None = None
 
+    def _voice_id(self) -> str | None:
+        state = runtime.store.get(self.session_id)
+        chosen = state.voice_id if state else None
+        return chosen if chosen in {v["id"] for v in runtime.settings.voice_choices()} else None
+
     def _keyterms(self) -> list[str]:
         state = runtime.store.get(self.session_id)
         names = [state.agent_name, state.user_name, state.google_name] if state else []
@@ -522,7 +527,7 @@ class VoiceCall:
                 ConfidenceTagger(self),
                 user_agg,
                 self.brain_svc,
-                make_tts(s),
+                make_tts(s, voice_id=self._voice_id()),
                 transport.output(),
                 assistant_agg,
             ]

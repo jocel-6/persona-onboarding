@@ -92,6 +92,22 @@ class Settings:
     silence_checkin_secs: float = field(default_factory=lambda: float(_env("SILENCE_CHECKIN_SECS", "5")))
     silence_offer_text_secs: float = field(default_factory=lambda: float(_env("SILENCE_OFFER_TEXT_SECS", "10")))
 
+    # Voices offered in the naming step (#4). Cartesia IDs from the blind bake-off.
+    voice_choices_json: str = field(default_factory=lambda: _env(
+        "VOICE_CHOICES",
+        '[{"id": "630ed21c-2c5c-41cf-9d82-10a7fd668370", "name": "Corey", "vibe": "Cheerful, easygoing"},'
+        ' {"id": "30894953-bcce-41fe-892c-15ce19c843ff", "name": "Parker", "vibe": "Warm, supportive"},'
+        ' {"id": "e8e5fffb-252c-436d-b842-8879b84445b6", "name": "Cathy", "vibe": "Friendly, relaxed"}]',
+    ))
+
+    def voice_choices(self) -> list[dict]:
+        if self.tts_provider != "cartesia" or not self.cartesia_api_key:
+            return []
+        try:
+            return [v for v in json.loads(self.voice_choices_json) if isinstance(v, dict) and v.get("id")]
+        except ValueError:
+            return []
+
     def frontend_origins(self) -> list[str]:
         """FRONTEND_ORIGIN may list several, comma-separated (e.g. the deployed site and localhost)."""
         return [o.strip().rstrip("/") for o in self.frontend_origin.split(",") if o.strip()]

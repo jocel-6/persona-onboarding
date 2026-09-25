@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   API_URL,
   addInsightFix,
+  pickVoice,
+  voiceSampleUrl,
   createSession,
   deleteSession,
   editField,
@@ -18,6 +20,7 @@ import {
   type TurnUsage,
   type CalendarEvent,
   type Insight,
+  type VoiceChoice,
   type UiEvent,
 } from "@/lib/api";
 import { startVoiceCall, type VoiceCall } from "@/lib/voice";
@@ -52,6 +55,7 @@ export default function Onboarding() {
   const [doneDismissed, setDoneDismissed] = useState(false);
   const [recapDismissed, setRecapDismissed] = useState(false);
   const [insightsDismissed, setInsightsDismissed] = useState(false);
+  const [voicePickerDone, setVoicePickerDone] = useState(false);
   const [debug, setDebug] = useState(false);
   const [latency, setLatency] = useState<TurnLatency | null>(null);
   const [usage, setUsage] = useState<TurnUsage | null>(null);
@@ -285,6 +289,7 @@ export default function Onboarding() {
     setDoneDismissed(false);
     setRecapDismissed(false);
     setInsightsDismissed(false);
+    setVoicePickerDone(false);
     setLatency(null);
     await boot(true);
   };
@@ -495,6 +500,16 @@ export default function Onboarding() {
                 </button>
               </div>
             )}
+
+            {session?.agent_name && callView === "none" && !graduated && (config.voice_choices?.length ?? 0) > 0 &&
+              !session.voice_id && !voicePickerDone && (
+                <VoicePicker
+                  agentName={session.agent_name}
+                  choices={config.voice_choices ?? []}
+                  onPick={(v) => void pickVoice(session.session_id, v.id).then(applyState).catch(() => {})}
+                  onDone={() => setVoicePickerDone(true)}
+                />
+              )}
 
             {callOffer && callView === "none" && (
               <div className="card">
@@ -947,6 +962,66 @@ function CallScreen({
             </button>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** #4: hear your Persona say its new name in each voice, and pick one. */
+function VoicePicker({
+  agentName,
+  choices,
+  onPick,
+  onDone,
+}: {
+  agentName: string;
+  choices: VoiceChoice[];
+  onPick: (v: VoiceChoice) => void;
+  onDone: () => void;
+}) {
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
+  const audio = useRef<HTMLAudioElement | null>(null);
+
+  const tryVoice = (v: VoiceChoice) => {
+    audio.current?.pause();
+    const a = new Audio(voiceSampleUrl(v.id, agentName));
+    audio.current = a;
+    setPlaying(v.id);
+    a.onended = () => setPlaying((p) => (p === v.id ? null : p));
+    void a.play().catch(() => setPlaying(null));
+    setPicked(v.id);
+    onPick(v);
+  };
+
+  return (
+    <div className="card voice-picker">
+      <div>
+        <strong>Pick {agentName}&apos;s voice</strong>
+        <p className="small muted" style={{ margin: "2px 0 0" }}>Tap to hear it. You can change it anytime.</p>
+      </div>
+      <div className="voice-options">
+        {choices.map((v) => (
+          <button
+            key={v.id}
+            className={`voice-option ${picked === v.id ? "picked" : ""} ${playing === v.id ? "playing" : ""}`}
+            onClick={() => tryVoice(v)}
+            aria-pressed={picked === v.id}
+          >
+            <span className="voice-wave" aria-hidden>
+              <i /><i /><i />
+            </span>
+            <span>
+              <strong>{v.name}</strong>
+              {v.vibe && <span className="small muted"> · {v.vibe}</span>}
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="row end">
+        <button className={picked ? "primary small" : "link small"} onClick={onDone}>
+          {picked ? "Sounds good" : "Skip"}
+        </button>
       </div>
     </div>
   );

@@ -6,6 +6,8 @@
   POST   /api/sessions/{id}/events      app event (call, hangup, Gmail, resume) -> SSE stream
   DELETE /api/sessions/{id}             forget the session
   POST   /api/sessions/{id}/fields      fix a field from the recap (validated, no model call)
+  GET    /api/voices/{voice_id}/sample  "Hi, I'm <name>!" in that voice, for the picker
+  POST   /api/sessions/{id}/voice       pick the agent's voice
   POST   /api/sessions/{id}/insights/{insight_id}/add   turn a finding's fix into a confirm card
   POST   /api/offer, PATCH /api/offer   WebRTC signaling for the voice call
   GET    /api/google/start, /callback   Google sign-in popup (read-only calendar + email headers)
@@ -30,7 +32,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import google, runtime
@@ -127,6 +129,7 @@ def _config() -> dict[str, Any]:
         "voice": problem is None,
         "voice_problem": problem,
         "ice_servers": settings.ice_servers(),
+        "voice_choices": [{k: v.get(k) for k in ("id", "name", "vibe")} for v in settings.voice_choices()],
     }
 
 
@@ -291,6 +294,42 @@ async def insight_add(session_id: str, insight_id: str) -> dict[str, Any]:
         if event is None:
             raise HTTPException(422, reason)
         state.pending_event = event
+        store.save(state)
+        return {"state": state.public_view()}
+
+
+class VoiceIn(BaseModel):
+    voice_id: str = Field(min_length=1, max_length=64)
+
+
+@app.get("/api/voices/{voice_id}/sample")
+async def voice_sample(voice_id: str, name: str = "Nova") -> Response:
+    import httpx
+
+    from . import validation
+    from .voice.samples import sample
+
+    if voice_id not in {v["id"] for v in settings.voice_choices()}:
+        raise HTTPException(404, "unknown voice")
+    clean, _ = validation.check_agent_name(name)
+    try:
+        audio = await sample(settings, voice_id, clean or "Nova")
+    except httpx.HTTPError:
+        raise HTTPException(502, "couldn't make a sample right now")
+    return Response(audio, media_type="audio/wav", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.post("/api/sessions/{session_id}/voice")
+async def pick_voice(session_id: str, body: VoiceIn) -> dict[str, Any]:
+    choices = {v["id"]: v for v in settings.voice_choices()}
+    if body.voice_id not in choices:
+        raise HTTPException(422, "unknown voice")
+    async with runtime.locks[session_id]:
+        state = _load(session_id)
+        state.voice_id = body.voice_id
+        from . import orchestrator as orch
+
+        orch.add_event_turn(state, f"Voice: {choices[body.voice_id].get('name', 'picked')}")
         store.save(state)
         return {"state": state.public_view()}
 

@@ -11,7 +11,7 @@ Ideas beyond the take-home spec, chosen to make the consumer experience better a
 | 1 | **Speculative replies.** Start generating from the live transcript before the user finishes; discard if they keep talking. | Replies ~0.3–0.5 s sooner | ✅ |
 | 2 | **Instant acknowledgements.** Pre-rendered "mm-hm / got it / oh nice" clips in the agent's voice play the moment the user stops, while the real reply is written. | The gap after you speak disappears | ✅ |
 | 3 | **Tone-matched voice.** Cartesia emotion/speed controls follow the mood the app already detects: softer and slower when frustrated, brighter when excited. | It sounds like it's reading the room | ✅ |
-| 4 | **Pick its voice when you name it.** Three short samples in the naming step. | A second "this is mine" moment | ⬜ |
+| 4 | **Pick its voice when you name it.** Three short samples in the naming step. | A second "this is mine" moment | ✅ |
 | 5 | **Hear tone, not just words.** Audio emotion analysis (Hume) feeds the director's note. | Notices stress even behind polite words | ⬜ |
 
 > #1 runs on Deepgram Flux (`STT_ENGINE=flux`): conversational speech-to-text with its own turn detection and early end-of-turn predictions. It's opt-in until verified on live calls; the default stays Nova-3 + Smart Turn.

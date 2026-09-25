@@ -20,6 +20,7 @@ export type SessionState = {
   gmail: string | null;
   help_topic: string | null;
   agent_name_defaulted: boolean;
+  voice_id: string | null;
   gmail_status: "not_connected" | "popup_open" | "connected" | "denied" | "error";
   gmail_card_shown: boolean;
   gmail_demo: boolean;
@@ -118,7 +119,24 @@ export type Config = {
   voice?: boolean;
   voice_problem?: string | null;
   ice_servers?: RTCIceServer[];
+  voice_choices?: VoiceChoice[];
 };
+
+export type VoiceChoice = { id: string; name: string; vibe?: string };
+
+export function voiceSampleUrl(voiceId: string, agentName: string): string {
+  return `${API_URL}/api/voices/${voiceId}/sample?name=${encodeURIComponent(agentName)}`;
+}
+
+export async function pickVoice(id: string, voiceId: string): Promise<SessionState> {
+  const r = await fetch(`${API_URL}/api/sessions/${id}/voice`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ voice_id: voiceId }),
+  });
+  if (!r.ok) throw new Error("Couldn't set that voice.");
+  return (await r.json()).state as SessionState;
+}
 
 export async function createSession(): Promise<{ state: SessionState; ui: UiEvent[]; config: Config }> {
   let tz: string | undefined;

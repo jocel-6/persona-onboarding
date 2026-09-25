@@ -16,6 +16,10 @@ export type VoiceHandlers = {
   onMicName: (name: string) => void;
   /** The mic isn't working: blocked, missing, or silent. */
   onMicProblem: (message: string) => void;
+  /** 0..1 loudness of the agent's voice, for the orb. */
+  onBotLevel?: (level: number) => void;
+  /** A word the agent just said out loud (synced to the audio, from TTS word timestamps). */
+  onBotWord?: (word: string) => void;
 };
 
 /** If the mic has produced nothing above this level for this long, something's wrong. */
@@ -46,6 +50,10 @@ export async function startVoiceCall(
       onServerMessage: (data) => h.onEvent(data as StreamEvent),
       onUserTranscript: (d) => h.onUserTranscript(d.text, d.final),
       onBotStartedSpeaking: () => h.onBotSpeaking(true),
+      onRemoteAudioLevel: (level) => h.onBotLevel?.(level),
+      onBotOutput: (d) => {
+        if (d.aggregated_by === "word" && d.text) h.onBotWord?.(d.text);
+      },
       onBotStoppedSpeaking: () => h.onBotSpeaking(false),
       onUserStartedSpeaking: () => h.onUserSpeaking(true),
       onUserStoppedSpeaking: () => h.onUserSpeaking(false),

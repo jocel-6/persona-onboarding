@@ -68,7 +68,8 @@ class OnboardingState(BaseModel):
     # and the ones they confirmed. Nothing is written to their calendar without that tap.
     # "Persona noticed": problems found in their calendar/inbox by app/insights.py, best first.
     insights: list[dict[str, Any]] = Field(default_factory=list)
-    hunch_done: bool = False  # offered a non-obvious "I bet..." problem from what they said
+    hunch_done: bool = False
+    week_summary: dict[str, Any] | None = None  # counts only, for the living profile  # offered a non-obvious "I bet..." problem from what they said
     pending_event: dict[str, Any] | None = None
     added_events: list[dict[str, Any]] = Field(default_factory=list)
 

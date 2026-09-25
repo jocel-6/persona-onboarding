@@ -100,11 +100,13 @@ def in_call(state: OnboardingState) -> bool:
 
 def refresh_insights(state: OnboardingState) -> None:
     """Recompute what Persona noticed (after connecting, and after they fix something)."""
-    from .insights import find_insights
+    from .insights import find_insights, week_summary
 
+    connected = state.gmail_status == "connected"
     state.insights = [
         i.public() for i in find_insights(state.account_snapshot, tz_name=state.user_tz, help_topic=state.help_topic)
-    ] if state.gmail_status == "connected" else []
+    ] if connected else []
+    state.week_summary = week_summary(state.account_snapshot, tz_name=state.user_tz) if connected else None
 
 
 def hunch_due(state: OnboardingState) -> bool:

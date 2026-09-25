@@ -64,6 +64,8 @@ export default function Onboarding() {
   const [muted, setMuted] = useState(false);
   const [callNote, setCallNote] = useState<string | null>(null);
   const [micLevel, setMicLevel] = useState(0);
+  const [botLevel, setBotLevel] = useState(0);
+  const [spokenCaption, setSpokenCaption] = useState("");
   const [micName, setMicName] = useState<string | null>(null);
   const [micProblem, setMicProblem] = useState<string | null>(null);
   const botSpeakingRef = useRef(false);
@@ -397,9 +399,12 @@ export default function Onboarding() {
         onBotSpeaking: (speaking) => {
           botSpeakingRef.current = speaking;
           setBotSpeaking(speaking);
+          if (speaking) setSpokenCaption("");
           if (!speaking && endAfterSpeechRef.current) void finishVoice();
         },
         onUserSpeaking: setUserSpeaking,
+        onBotLevel: setBotLevel,
+        onBotWord: (w) => setSpokenCaption((c) => (c ? `${c} ${w}` : w)),
         onMicLevel: setMicLevel,
         onMicName: setMicName,
         onMicProblem: setMicProblem,
@@ -463,6 +468,7 @@ export default function Onboarding() {
 
       <main className="layout">
         <section className="chat" aria-live="polite">
+          {session && <ProfileStrip s={session} />}
           <Thread
             transcript={transcript}
             pendingUser={pendingUser}
@@ -565,6 +571,7 @@ export default function Onboarding() {
           />
         </section>
 
+        {session && <ProfilePanel s={session} />}
         {debug && session && <DebugPanel s={session} latency={latency} usage={usage} />}
       </main>
 
@@ -581,6 +588,8 @@ export default function Onboarding() {
           onHangUp={hangUp}
           onSay={sendMessage}
           voice={voiceLive}
+          botLevel={botLevel}
+          spokenCaption={spokenCaption}
           micLevel={micLevel}
           micName={micName}
           micProblem={micProblem}
@@ -814,6 +823,8 @@ function CallScreen({
   onHangUp,
   onSay,
   voice,
+  botLevel,
+  spokenCaption,
   micLevel,
   micName,
   micProblem,
@@ -836,6 +847,8 @@ function CallScreen({
   onHangUp: () => void;
   onSay: (t: string) => void;
   voice: boolean;
+  botLevel: number;
+  spokenCaption: string;
   micLevel: number;
   micName: string | null;
   micProblem: string | null;
@@ -856,19 +869,18 @@ function CallScreen({
   }, [view]);
 
   const lastAgentVoice = [...transcript].reverse().find((t) => t.role === "agent" && t.channel === "voice")?.text;
-  const caption = live ?? lastAgentVoice ?? "";
+  // On a real call, show words as they're spoken (TTS word timestamps); otherwise the streamed text.
+  const caption = (voice && spokenCaption) || live || lastAgentVoice || "";
   const mmss = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
     <div className="call" role="dialog" aria-label={`Call with ${agentName}`}>
       <div className="call-inner">
-        <div
-          className={`avatar ${view === "ringing" ? "ringing" : (voice ? botSpeaking : live) ? "speaking" : ""} ${
-            voice && userSpeaking ? "listening" : ""
-          }`}
-        >
-          {agentName.slice(0, 1).toUpperCase()}
-        </div>
+        <VoiceOrb
+          mode={view === "ringing" ? "ringing" : voice && userSpeaking ? "listening" : (voice ? botSpeaking : !!live) ? "speaking" : "idle"}
+          level={voice ? (userSpeaking ? micLevel : botLevel) : live ? 0.35 : 0}
+          initial={agentName.slice(0, 1).toUpperCase()}
+        />
         <h2>{agentName}</h2>
         <p className="muted">
           {view === "ringing"
@@ -936,6 +948,86 @@ function CallScreen({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Apple-style orb that breathes with whoever is talking. */
+function VoiceOrb({ mode, level, initial }: { mode: "ringing" | "listening" | "speaking" | "idle"; level: number; initial: string }) {
+  const scale = 1 + Math.min(1, level * 3) * 0.22;
+  return (
+    <div className={`orb ${mode}`} aria-hidden>
+      <div className="orb-glow" style={{ transform: `scale(${1 + Math.min(1, level * 3) * 0.45})` }} />
+      <div className="orb-core" style={{ transform: `scale(${scale})` }}>
+        <span>{initial}</span>
+      </div>
+    </div>
+  );
+}
+
+const VIBE: Record<string, string> = {
+  rushed: "In a hurry",
+  frustrated: "A bit frustrated",
+  enthusiastic: "Excited",
+  chatty: "Chatty",
+};
+
+/** The living profile: it fills in as the agent gets to know you. */
+function profileRows(s: SessionState): { key: string; label: string; value: string; accent?: boolean }[] {
+  const rows: { key: string; label: string; value: string; accent?: boolean }[] = [];
+  if (s.agent_name) rows.push({ key: "agent", label: "Your Persona", value: s.agent_name });
+  if (s.user_name) rows.push({ key: "you", label: "You", value: s.user_name });
+  if (s.help_topic) rows.push({ key: "need", label: "Helping with", value: s.help_topic });
+  if (VIBE[s.sentiment]) rows.push({ key: "vibe", label: "Right now", value: VIBE[s.sentiment] });
+  const w = s.week_summary;
+  if (w && s.gmail_status === "connected") {
+    rows.push({
+      key: "week",
+      label: w.demo ? "Your week (demo)" : "Your week",
+      value: `${w.events_this_week} events${w.busiest_day ? ` · busiest ${w.busiest_day.toLowerCase()} (${w.busiest_count})` : ""}`,
+    });
+  }
+  if (s.insights?.length) {
+    rows.push({ key: "noticed", label: "Noticed", value: s.insights[0].headline, accent: true });
+  }
+  if (s.added_events?.length) {
+    rows.push({ key: "added", label: "Added for you", value: s.added_events.map((e) => e.title).join(", ") });
+  }
+  return rows;
+}
+
+function ProfilePanel({ s }: { s: SessionState }) {
+  const rows = profileRows(s);
+  return (
+    <aside className="profile" aria-label="What Persona knows so far">
+      <div className="profile-head">
+        <span className="profile-dot" />
+        <strong>{s.agent_name ? `${s.agent_name} is getting to know you` : "Getting to know you"}</strong>
+      </div>
+      {rows.length === 0 && <p className="small muted">This fills in as we talk.</p>}
+      <dl>
+        {rows.map((r) => (
+          <div key={`${r.key}:${r.value}`} className={`profile-row ${r.accent ? "accent" : ""}`}>
+            <dt>{r.label}</dt>
+            <dd>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </aside>
+  );
+}
+
+/** Small screens: the same profile as chips across the top. */
+function ProfileStrip({ s }: { s: SessionState }) {
+  const rows = profileRows(s).filter((r) => r.key !== "noticed");
+  if (!rows.length) return null;
+  return (
+    <div className="profile-strip" aria-hidden>
+      {rows.map((r) => (
+        <span key={`${r.key}:${r.value}`} className="profile-chip">
+          <span className="muted">{r.label}</span> {r.value}
+        </span>
+      ))}
     </div>
   );
 }

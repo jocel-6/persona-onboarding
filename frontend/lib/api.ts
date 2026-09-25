@@ -37,9 +37,18 @@ export type SessionState = {
   corrected: string[];
   last_director_note: string | null;
   insights: Insight[];
+  week_summary: WeekSummary | null;
   pending_event: CalendarEvent | null;
   added_events: CalendarEvent[];
   transcript: Turn[];
+};
+
+export type WeekSummary = {
+  events_this_week: number;
+  busiest_day: string | null;
+  busiest_count: number;
+  emails_scanned: number;
+  demo: boolean;
 };
 
 export type Insight = {

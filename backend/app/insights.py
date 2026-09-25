@@ -281,3 +281,26 @@ def describe_insights(insights: list[dict[str, Any]]) -> str:
         fix = " (one-tap fix: add to calendar)" if (ins.get("action") or {}).get("type") == "add_event" else ""
         lines.append(f"- [{ins['kind']}] {ins['headline']}. {ins['detail']}{fix}")
     return "\n".join(lines)
+
+
+def week_summary(snapshot: dict[str, Any] | None, *, tz_name: str | None = None, now: datetime | None = None) -> dict[str, Any] | None:
+    """The shape of their week for the living profile: counts and day names only, no titles."""
+    if not snapshot:
+        return None
+    tz = user_zone(tz_name)
+    now = (now or datetime.now(timezone.utc)).astimezone(tz)
+    week = [
+        s for e in snapshot.get("events", [])
+        if (s := _parse(e.get("start"), tz)) and now - timedelta(hours=1) <= s <= now + timedelta(days=7)
+    ]
+    by_day: dict[date, int] = {}
+    for s in week:
+        by_day[s.date()] = by_day.get(s.date(), 0) + 1
+    busiest = max(by_day.items(), key=lambda kv: kv[1], default=None)
+    return {
+        "events_this_week": len(week),
+        "busiest_day": _day_label(busiest[0], now.date()).capitalize() if busiest else None,
+        "busiest_count": busiest[1] if busiest else 0,
+        "emails_scanned": len(snapshot.get("emails", [])),
+        "demo": bool(snapshot.get("demo")),
+    }

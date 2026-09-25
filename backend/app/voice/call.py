@@ -24,6 +24,10 @@ from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnal
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
+    EagerEndOfTurnCancelFrame,
+    TTSSpeakFrame,
+    TTSUpdateSettingsFrame,
+    UserStoppedSpeakingFrame,
     Frame,
     InterruptionFrame,
     LLMContextFrame,
@@ -59,6 +63,30 @@ from .turntaking import BackchannelAwareStartStrategy, speakable, strip_leading_
 log = logging.getLogger("persona.voice")
 
 LOW_CONFIDENCE = 0.6
+
+# Instant acknowledgements, played only while the real reply is still being written.
+ACKS = ["Mm-hm.", "Got it.", "Okay.", "Mmm.", "Right."]
+QUESTION_ACKS = ["Hmm.", "Ooh, good question.", "Hmm, let me think."]
+
+# Tone-matched delivery (Cartesia generation_config). Documented emotions only.
+TONES = {
+    "frustrated": {"speed": 0.94, "emotion": "neutral"},  # slower, even, no pep
+    "rushed": {"speed": 1.1, "emotion": "neutral"},
+    "enthusiastic": {"speed": 1.03, "emotion": "excited"},
+    "chatty": {"speed": 1.0, "emotion": "content"},
+    "neutral": {"speed": 1.0, "emotion": "content"},
+}
+
+
+def pick_ack(user_text: str, sentiment: str, last: str | None) -> str | None:
+    """A short spoken acknowledgement to cover the thinking gap. None when it'd feel wrong."""
+    if sentiment == "frustrated":
+        return None  # an "mm-hm" to someone annoyed reads as patronizing
+    pool = QUESTION_ACKS if user_text.rstrip().endswith("?") else ACKS
+    if sentiment == "rushed":
+        pool = ["Okay.", "Got it."]
+    choices = [a for a in pool if a != last] or pool
+    return choices[int(time.time() * 1000) % len(choices)]
 CLIENT_READY_FALLBACK_SECS = 2.0
 LATENCY_LOG = Path(runtime.settings.db_path).parent / "latency.jsonl"
 
@@ -115,6 +143,18 @@ class BrainService(FrameProcessor):
         self._audio_started = False
         self._cancelled_by_user = False
         self._carryover: str | None = None  # a fragment waiting to be joined with the rest of the sentence
+        # Speculative replies (Flux): output is held until the turn is confirmed.
+        self._speculating = False
+        self._speculated_text: str | None = None
+        self._held: list[Frame] = []
+        self._discard = False
+        # Instant acknowledgements.
+        self._ack_task: asyncio.Task | None = None
+        self._reply_live = False
+        self._last_ack: str | None = None
+        self._turn_sentiment = "neutral"
+        self._tone: str | None = None
+        self._first_audio_via: str | None = None
         # Which assistant message / transcript line the last voice turn produced,
         # so a barge-in trims exactly that one (never a later text reply).
         self._last_turn_ref: tuple[int, int] | None = None
@@ -127,8 +167,16 @@ class BrainService(FrameProcessor):
         if isinstance(frame, LLMContextFrame):
             text = strip_leading_backchannels(_last_user_text(frame.context))
             if text:
-                await self.start_turn(user_text=text)
+                await self.start_turn(user_text=text, speculative=bool(getattr(frame, "speculation", False)))
             return  # consumed: we are the "LLM"
+
+        if isinstance(frame, EagerEndOfTurnCancelFrame) and self._speculating:
+            # They weren't done after all: throw the speculative reply away, as if it never ran.
+            self._discard = True
+            await self._cancel_turn()
+            self._discard = False
+        elif isinstance(frame, UserStoppedSpeakingFrame) and self._speculating:
+            await self._confirm_speculation()
 
         if isinstance(frame, InterruptionFrame):
             # Only a real interruption if they'd already started hearing this reply;
@@ -147,17 +195,86 @@ class BrainService(FrameProcessor):
 
     # ---- turns ----------------------------------------------------------
 
-    async def start_turn(self, *, user_text: str | None = None, event_text: str | None = None):
+    async def start_turn(self, *, user_text: str | None = None, event_text: str | None = None, speculative: bool = False):
         await self._cancel_turn()
-        self._turn = self.create_task(self._run_turn(user_text, event_text), name="brain-turn")
+        self._turn = self.create_task(self._run_turn(user_text, event_text, speculative), name="brain-turn")
 
     async def _cancel_turn(self):
+        await self._cancel_ack()
         if self._turn and not self._turn.done():
             await self.cancel_task(self._turn)
         self._turn = None
+        self._speculating = False
+        self._held = []
 
-    async def _run_turn(self, user_text: str | None, event_text: str | None):
+    # ---- output: live, or held while speculating --------------------------
+
+    async def _out(self, frame: Frame) -> None:
+        if self._speculating:
+            self._held.append(frame)
+            return
+        if isinstance(frame, (LLMFullResponseStartFrame, LLMTextFrame)):
+            if not self._reply_live:
+                self._reply_live = True
+                await self._cancel_ack()
+                await self._apply_tone()
+        await self.push_frame(frame)
+
+    async def _confirm_speculation(self) -> None:
+        """Their turn really ended: release the reply we already have (possibly all of it)."""
+        self._speculating = False
+        self._t_turn_end = time.perf_counter()
+        held, self._held = self._held, []
+        for f in held:
+            await self._out(f)
+        if not self._reply_live:
+            self._schedule_ack(self._speculated_text or "")
+
+    # ---- instant acknowledgements -------------------------------------------
+
+    def _schedule_ack(self, user_text: str) -> None:
+        if not runtime.settings.voice_acks or self._reply_live:
+            return
+        self._ack_task = self.create_task(self._ack_after_delay(user_text), name="ack")
+
+    async def _ack_after_delay(self, user_text: str) -> None:
+        await asyncio.sleep(runtime.settings.ack_delay_secs)
+        if self._reply_live or self._speculating or self._audio_started:
+            return
+        ack = pick_ack(user_text, self._turn_sentiment, self._last_ack)
+        if ack:
+            self._last_ack = ack
+            self._first_audio_via = "ack"
+            await self.push_frame(TTSSpeakFrame(ack, append_to_context=False))
+
+    async def _cancel_ack(self) -> None:
+        if self._ack_task and not self._ack_task.done():
+            await self.cancel_task(self._ack_task)
+        self._ack_task = None
+
+    # ---- tone-matched delivery ------------------------------------------------
+
+    async def _apply_tone(self) -> None:
+        s = runtime.settings
+        if not s.voice_tone or s.tts_provider != "cartesia":
+            return
+        tone = self._turn_sentiment if self._turn_sentiment in TONES else "neutral"
+        if tone == self._tone:
+            return
+        self._tone = tone
+        from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
+
+        await self.push_frame(
+            TTSUpdateSettingsFrame(delta=CartesiaTTSService.Settings(generation_config=GenerationConfig(**TONES[tone])))
+        )
+
+    async def _run_turn(self, user_text: str | None, event_text: str | None, speculative: bool = False):
         annotations: list[str] = []
+        self._speculating = speculative
+        self._speculated_text = user_text if speculative else None
+        self._held = []
+        self._reply_live = False
+        self._first_audio_via = None
         if user_text is not None and self._carryover:
             # The start of this thought was cut off by a pause; hear it as one sentence.
             user_text = f"{self._carryover} {user_text}"
@@ -172,7 +289,7 @@ class BrainService(FrameProcessor):
             self._silences = 0
             await self._set_idle_timeout(runtime.settings.silence_checkin_secs)
 
-        self._t_turn_end = time.perf_counter()
+        self._t_turn_end = None if speculative else time.perf_counter()
         self._t_first_token = None
         self._audio_started = False
         sid = self.call.session_id
@@ -180,6 +297,9 @@ class BrainService(FrameProcessor):
             state = runtime.store.get(sid)
             if state is None or state.call_status != "in_progress":
                 return
+            self._turn_sentiment = state.sentiment
+            if user_text is not None and not speculative:
+                self._schedule_ack(user_text)
             before = state.model_copy(deep=True)  # to undo a turn that was only a fragment
             gen = runtime.brain.run_turn(state, user_text=user_text, event_text=event_text, annotations=annotations)
             started = finished = False
@@ -189,9 +309,9 @@ class BrainService(FrameProcessor):
                         if not started:
                             started = True
                             self._t_first_token = time.perf_counter()
-                            await self.push_frame(LLMFullResponseStartFrame())
+                            await self._out(LLMFullResponseStartFrame())
                         if spoken := speakable(ev["text"]):
-                            await self.push_frame(LLMTextFrame(spoken))
+                            await self._out(LLMTextFrame(spoken))
                         await self._send(ev)
                     elif ev["type"] == "ui":
                         await self._send(ev)
@@ -200,7 +320,12 @@ class BrainService(FrameProcessor):
                 finished = True
             finally:
                 await gen.aclose()  # repairs history if we were cut off
-                if not finished and user_text is not None and self._cancelled_by_user and not self._audio_started:
+                if not finished and (self._discard or speculative):
+                    # A withdrawn speculation: the user never heard it, so it never happened. No
+                    # carryover either: Flux's committed transcript already has the whole turn.
+                    state = before
+                    self._last_turn_ref = None
+                elif not finished and user_text is not None and self._cancelled_by_user and not self._audio_started:
                     # They kept talking before hearing a word: that was a fragment of one thought
                     # ("What" ... "did I mention?"). Undo this turn and merge it into the next.
                     state = before
@@ -211,7 +336,7 @@ class BrainService(FrameProcessor):
                 runtime.store.save(state)
                 if finished:
                     if started:
-                        await self.push_frame(LLMFullResponseEndFrame())
+                        await self._out(LLMFullResponseEndFrame())
                     await self._send({"type": "state", "state": state.public_view()})
 
     async def trim_to_heard(self, heard: str):
@@ -261,7 +386,7 @@ class BrainService(FrameProcessor):
     # ---- helpers --------------------------------------------------------
 
     async def _send(self, data: dict[str, Any]):
-        await self.push_frame(RTVIServerMessageFrame(data=data))
+        await self._out(RTVIServerMessageFrame(data=data))
 
     def _log_latency(self):
         now = time.perf_counter()
@@ -272,6 +397,8 @@ class BrainService(FrameProcessor):
             if self._t_first_token
             else None,
             "turn_end_to_first_audio_ms": round((now - self._t_turn_end) * 1000),
+            "first_audio": self._first_audio_via or "reply",
+            "stt": runtime.settings.stt_engine,
         }
         self._t_turn_end = None
         log.info("voice latency %s", entry)
@@ -317,31 +444,44 @@ class VoiceCall:
             webrtc_connection=self.connection,
             params=TransportParams(audio_in_enabled=True, audio_out_enabled=True),
         )
-        stt_settings: dict[str, Any] = {
-            "model": s.stt_model,
-            "language": "en",
-            "interim_results": True,
-            "punctuate": True,
-            "smart_format": True,  # "two PM" -> "2 PM", emails and numbers formatted
-            # Names transcribed right every time, plus the words onboarding hears most.
-            "keyterm": [*self._keyterms(), "Persona", "Gmail"],
-        }
-        stt = DeepgramSTTService(api_key=s.deepgram_api_key, settings=DeepgramSTTService.Settings(**stt_settings))
+        keyterms = [*self._keyterms(), "Persona", "Gmail"]  # names right every time, plus onboarding words
+        if s.stt_engine == "flux":
+            from pipecat.services.deepgram.flux.stt import DeepgramFluxSTTService
+            from pipecat.turns.user_stop import EagerUserTurnStopStrategy
+
+            # Flux decides end of turn itself and predicts it early ("eager"), which is what lets
+            # the reply be written during the user's final pause. Interruptions stay with our
+            # backchannel-aware start strategy, so Flux doesn't interrupt on its own.
+            stt = DeepgramFluxSTTService(
+                api_key=s.deepgram_api_key,
+                should_interrupt=False,
+                enable_eager_end_of_turn=True,
+                settings=DeepgramFluxSTTService.Settings(keyterm=keyterms, eager_eot_threshold=0.5, eot_threshold=0.75),
+            )
+            stop_strategies = [EagerUserTurnStopStrategy()]
+        else:
+            stt = DeepgramSTTService(
+                api_key=s.deepgram_api_key,
+                settings=DeepgramSTTService.Settings(
+                    model=s.stt_model,
+                    language="en",
+                    interim_results=True,
+                    punctuate=True,
+                    smart_format=True,  # "two PM" -> "2 PM", emails and numbers formatted
+                    keyterm=keyterms,
+                ),
+            )
+            stop_strategies = [
+                TurnAnalyzerUserTurnStopStrategy(
+                    turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=s.turn_max_wait_secs))
+                )
+            ]
         context = LLMContext()
         aggregators = LLMContextAggregatorPair(
             context,
             user_params=LLMUserAggregatorParams(
                 vad_analyzer=SileroVADAnalyzer(),
-                user_turn_strategies=UserTurnStrategies(
-                    start=[BackchannelAwareStartStrategy()],
-                    stop=[
-                        TurnAnalyzerUserTurnStopStrategy(
-                            turn_analyzer=LocalSmartTurnAnalyzerV3(
-                                params=SmartTurnParams(stop_secs=s.turn_max_wait_secs)
-                            )
-                        )
-                    ],
-                ),
+                user_turn_strategies=UserTurnStrategies(start=[BackchannelAwareStartStrategy()], stop=stop_strategies),
                 user_idle_timeout=s.silence_checkin_secs,
             ),
         )

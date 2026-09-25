@@ -132,3 +132,46 @@ def test_stale_sessions_are_revoked_then_deleted(monkeypatch):
     assert asyncio.run(main.purge_stale_sessions()) >= 1
     assert runtime.store.get(old.session_id) is None and runtime.store.get_tokens(old.session_id) is None
     assert "rt-old" in revoked and runtime.store.get(fresh.session_id) is not None
+
+
+def test_acknowledgements_fit_the_moment():
+    from app.voice.call import ACKS, QUESTION_ACKS, pick_ack
+
+    assert pick_ack("I'm drowning in school emails", "neutral", None) in ACKS
+    assert pick_ack("can you help with my calendar?", "neutral", None) in QUESTION_ACKS
+    assert pick_ack("ugh whatever", "frustrated", None) is None  # "mm-hm" to someone annoyed feels patronizing
+    assert pick_ack("fine", "rushed", None) in ("Okay.", "Got it.")
+    for _ in range(20):
+        assert pick_ack("fine", "rushed", "Okay.") == "Got it."  # never the same one twice in a row
+
+
+def test_speculative_reply_is_held_then_released_on_confirm():
+    from pipecat.frames.frames import LLMTextFrame
+
+    from app.voice.call import BrainService
+
+    pushed = []
+
+    class FakeCall:
+        session_id = "s"
+        stopping = False
+
+    bs = BrainService(FakeCall())
+
+    async def fake_push(frame, direction=None):
+        pushed.append(frame)
+
+    bs.push_frame = fake_push
+
+    async def go():
+        bs._speculating = True
+        bs._speculated_text = "what's on my calendar tomorrow?"
+        await bs._out(LLMTextFrame("You've got"))
+        await bs._out(LLMTextFrame(" three things."))
+        assert not [f for f in pushed if isinstance(f, LLMTextFrame)]  # nothing reaches TTS yet
+        await bs._confirm_speculation()
+        texts = [f.text for f in pushed if isinstance(f, LLMTextFrame)]
+        assert texts == ["You've got", " three things."]  # released in order, instantly
+        assert bs._reply_live and bs._t_turn_end is not None
+
+    asyncio.run(go())

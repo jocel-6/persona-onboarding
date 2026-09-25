@@ -74,6 +74,16 @@ class Settings:
     ice_servers_json: str = field(
         default_factory=lambda: _env("ICE_SERVERS", '[{"urls": "stun:stun.l.google.com:19302"}]')
     )
+    # Speech-to-text engine: "nova" (Nova-3 + local Smart Turn, the proven default) or "flux"
+    # (Deepgram Flux: conversational STT with its own turn detection, plus speculative replies:
+    # the answer is generated during your final pause and released the moment your turn is confirmed).
+    stt_engine: str = field(default_factory=lambda: _env("STT_ENGINE", "nova"))
+    # Instant acknowledgements: if the real reply hasn't started this soon after the user stops,
+    # play a short "mm-hm" in the agent's voice so the silence never feels dead.
+    voice_acks: bool = field(default_factory=lambda: _env("VOICE_ACKS", "1") == "1")
+    ack_delay_secs: float = field(default_factory=lambda: float(_env("ACK_DELAY_MS", "450")) / 1000)
+    # Tone-matched delivery (Cartesia): speed/emotion follow the user's mood.
+    voice_tone: bool = field(default_factory=lambda: _env("VOICE_TONE", "1") == "1")
     # End of turn: Smart Turn replies right away when it judges you're done; when it's unsure,
     # wait at most this long in silence. Pipecat's default is 3s, which on real callers meant
     # ~4.5s before every reply (the model often judged finished sentences "incomplete").

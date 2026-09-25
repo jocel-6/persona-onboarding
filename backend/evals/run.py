@@ -420,6 +420,9 @@ async def main() -> None:
     ap.add_argument("--models", default="claude-haiku-4-5,claude-sonnet-5")
     ap.add_argument("--personas", default="all")
     ap.add_argument("--concurrency", type=int, default=4)
+    ap.add_argument("--min-pass", type=float, default=None,
+                    help="Quality gate: exit 1 if any model's pass rate is below this fraction (e.g. 0.6).")
+    ap.add_argument("--summary", default=None, help="Also append the report here (e.g. $GITHUB_STEP_SUMMARY).")
     args = ap.parse_args()
 
     models = [m.strip() for m in args.models.split(",") if m.strip()]
@@ -474,6 +477,21 @@ async def main() -> None:
     (RESULTS / "latest.md").write_text(md)
     ledger.record_run({"at": stamp, "conversations": len(convos), "usd": round(spent, 4)})
     print("\n" + md)
+    if args.summary:
+        with open(args.summary, "a") as f:
+            f.write(md + "\n")
+
+    if args.min_pass is not None:
+        failing = []
+        for m in models:
+            cs = [c for c in convos if c.model == m]
+            rate = sum(c.passed for c in cs) / len(cs) if cs else 0.0
+            if rate < args.min_pass:
+                failing.append(f"{m}: {rate:.0%} < {args.min_pass:.0%}")
+        if failing:
+            print("\nQUALITY GATE FAILED: " + "; ".join(failing))
+            raise SystemExit(1)
+        print(f"\nQuality gate passed (every model >= {args.min_pass:.0%}).")
 
 
 if __name__ == "__main__":

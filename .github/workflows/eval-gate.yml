@@ -1,0 +1,45 @@
+name: Eval quality gate
+
+# Runs real conversations against Claude (~$0.40 per run), so it never runs on every
+# push: trigger it by hand, or label a pull request "eval".
+on:
+  workflow_dispatch:
+    inputs:
+      personas:
+        description: "Comma-separated personas (or 'all')"
+        default: "rushed_exec,privacy_skeptic,skip_everything,self_corrector"
+      model:
+        description: "Brain model"
+        default: "claude-sonnet-5"
+      min_pass:
+        description: "Minimum pass rate (0-1)"
+        default: "0.5"
+  pull_request:
+    types: [labeled, synchronize]
+
+jobs:
+  eval:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'eval')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      EVAL_BUDGET_USD: "2"
+      DB_PATH: ":memory:"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Run the gate
+        run: >
+          python -m evals.run
+          --models "${{ inputs.model || 'claude-sonnet-5' }}"
+          --personas "${{ inputs.personas || 'rushed_exec,privacy_skeptic,skip_everything,self_corrector' }}"
+          --min-pass "${{ inputs.min_pass || '0.5' }}"
+          --summary "$GITHUB_STEP_SUMMARY"

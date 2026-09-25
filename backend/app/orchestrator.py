@@ -103,9 +103,11 @@ def refresh_insights(state: OnboardingState) -> None:
     from .insights import find_insights, tomorrow_at_a_glance, week_summary
 
     connected = state.gmail_status == "connected"
-    state.insights = [
+    rule_based = [
         i.public() for i in find_insights(state.account_snapshot, tz_name=state.user_tz, help_topic=state.help_topic)
     ] if connected else []
+    # Deep findings lead (they're the "how did it know?" ones); rule findings follow.
+    state.insights = ([*state.deep_insights, *rule_based] if connected else [])[:6]
     state.week_summary = week_summary(state.account_snapshot, tz_name=state.user_tz) if connected else None
     state.tomorrow = (
         tomorrow_at_a_glance(state.account_snapshot, state.insights, tz_name=state.user_tz) if connected else None

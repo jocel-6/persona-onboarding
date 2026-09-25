@@ -141,6 +141,7 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
 
     if t == "gmail_disconnected":
         state.insights = []
+        state.deep_insights = []
         state.week_summary = None
         state.gmail_status = "not_connected"
         state.gmail = None

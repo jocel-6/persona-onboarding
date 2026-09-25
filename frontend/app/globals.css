@@ -900,3 +900,8 @@ button.link:hover {
   max-height: 90dvh;
   overflow-y: auto;
 }
+
+.tag-pill.deep {
+  background: color-mix(in srgb, var(--brand) 18%, var(--surface));
+  color: var(--brand);
+}

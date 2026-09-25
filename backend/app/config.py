@@ -92,6 +92,9 @@ class Settings:
     silence_checkin_secs: float = field(default_factory=lambda: float(_env("SILENCE_CHECKIN_SECS", "5")))
     silence_offer_text_secs: float = field(default_factory=lambda: float(_env("SILENCE_OFFER_TEXT_SECS", "10")))
 
+    # #6: a deeper, model-driven look at the week after Gmail connects (~$0.01-0.02, once per connection).
+    deep_insights: bool = field(default_factory=lambda: _env("DEEP_INSIGHTS", "1") == "1")
+    deep_insights_model: str = field(default_factory=lambda: _env("DEEP_INSIGHTS_MODEL", "claude-sonnet-5"))
     # Voices offered in the naming step (#4). Cartesia IDs from the blind bake-off.
     voice_choices_json: str = field(default_factory=lambda: _env(
         "VOICE_CHOICES",

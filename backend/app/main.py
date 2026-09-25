@@ -133,6 +133,44 @@ def _config() -> dict[str, Any]:
     }
 
 
+async def _deep_insights_later(session_id: str) -> None:
+    """#6: the deep look runs beside the conversation, never in its way."""
+    from datetime import datetime, timezone
+
+    from . import orchestrator as orch
+    from .deep_insights import find_deep_insights
+    from .google import describe_snapshot, user_zone
+    from .insights import describe_insights
+
+    await asyncio.sleep(0.5)  # let the connect event land first
+    state = store.get(session_id)
+    if state is None or not state.account_snapshot or state.deep_insights:
+        return
+    now = datetime.now(timezone.utc).astimezone(user_zone(state.user_tz))
+    found = await find_deep_insights(
+        brain.client,
+        settings.deep_insights_model,
+        snapshot_text=describe_snapshot(state.account_snapshot, tz_name=state.user_tz),
+        rule_findings=describe_insights(state.insights),
+        help_topic=state.help_topic,
+        user_name=state.user_name,
+        now_text=now.strftime("%A, %b %-d, %Y, %-I:%M%p"),
+    )
+    if not found:
+        return
+    async with runtime.locks[session_id]:
+        state = store.get(session_id)
+        if state is None or state.gmail_status != "connected":
+            return
+        state.deep_insights = found
+        orch.refresh_insights(state)
+        store.save(state)
+    from .voice.call import active_calls
+
+    if call := active_calls.get(session_id):
+        await call.brain_svc._send({"type": "state", "state": state.public_view()})
+
+
 async def _add_pending_event(session_id: str) -> str:
     """The user tapped Add: write the pending event to their calendar. Never called by the model."""
     import httpx
@@ -354,6 +392,8 @@ async def post_event(session_id: str, body: EventIn) -> StreamingResponse:
         await _revoke_google(session_id)
     if body.type == "event_confirmed":
         body.data["result"] = await _add_pending_event(session_id)
+    if body.type == "gmail_connected" and settings.deep_insights:
+        asyncio.create_task(_deep_insights_later(session_id))
     if body.type == "hangup":
         # Stop the audio pipeline first so a half-spoken turn can't race the text follow-up.
         from .voice.call import end_call

@@ -374,6 +374,26 @@ export default function Onboarding() {
     onDismiss: () => sendEvent("gmail_closed"),
   } as const;
 
+  // #6: deep findings arrive a few seconds after connecting; pick them up even between turns.
+  const connectedAt = session?.gmail_status === "connected" ? session.session_id : null;
+  const hasDeep = !!session?.insights?.some((i) => i.kind === "deep");
+  useEffect(() => {
+    if (!connectedAt || hasDeep) return;
+    let tries = 0;
+    const t = setInterval(async () => {
+      tries += 1;
+      try {
+        const got = await getSession(connectedAt);
+        if (got?.state.insights?.some((i) => i.kind === "deep")) {
+          setSession((cur) => (cur ? { ...cur, insights: got.state.insights } : cur));
+          clearInterval(t);
+        }
+      } catch {}
+      if (tries >= 12) clearInterval(t);
+    }, 2500);
+    return () => clearInterval(t);
+  }, [connectedAt, hasDeep]);
+
   // ---- call lifecycle ------------------------------------------------
 
   useEffect(() => {
@@ -1142,6 +1162,7 @@ function ProfileStrip({ s }: { s: SessionState }) {
 }
 
 const INSIGHT_LABEL: Record<Insight["kind"], string> = {
+  deep: "Insight",
   conflict: "Conflict",
   tight: "No breathing room",
   packed: "Busy day",

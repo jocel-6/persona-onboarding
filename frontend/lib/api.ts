@@ -55,7 +55,7 @@ export type WeekSummary = {
 
 export type Insight = {
   id: string;
-  kind: "conflict" | "tight" | "packed" | "deadline" | "prep" | "reply";
+  kind: "deep" | "conflict" | "tight" | "packed" | "deadline" | "prep" | "reply";
   headline: string;
   detail: string;
   action?: { type: "add_event" | "move_event" | "draft_reply"; suggested_time?: string | null } | null;

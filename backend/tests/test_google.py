@@ -290,3 +290,33 @@ def test_conflict_fix_moves_the_event_only_on_the_tap():
     moved = next(e for e in st.account_snapshot["events"] if e["id"] == pending["event_id"])
     assert moved["start"] == pending["start"] and st.pending_event is None
     assert not [i for i in st.insights if i["kind"] == "conflict"]  # the fixed problem is gone
+
+
+def test_deep_insights_are_grounded_structured_and_merged_first(monkeypatch):
+    import asyncio as aio
+    from types import SimpleNamespace as NS
+
+    from app.deep_insights import DeepFinding, DeepResult, find_deep_insights
+
+    class FakeParse:
+        async def parse(self, **kw):
+            assert "Already found by rules" in kw["messages"][0]["content"]
+            return NS(usage=NS(input_tokens=900, output_tokens=200), parsed_output=DeepResult(findings=[
+                DeepFinding(headline="The field trip Friday lands on your planning day",
+                            detail="Friday's field trip and Quarterly planning overlap; someone needs to cover pickup.",
+                            fix="add_event", fix_title="Ask Sam to cover pickup", fix_start="2026-09-24T09:00",
+                            fix_minutes=15),
+                DeepFinding(headline="x", detail="y", fix="none"),
+            ]))
+
+    client = NS(messages=FakeParse())
+    found = aio.run(find_deep_insights(client, "claude-sonnet-5", snapshot_text="...", rule_findings="- [conflict] ...",
+                                       help_topic="school", user_name="Jo", now_text="Wednesday"))
+    assert found[0]["kind"] == "deep" and found[0]["action"]["event"]["title"] == "Ask Sam to cover pickup"
+    assert found[1]["action"] is None
+
+    s = OnboardingState(agent_name="Wren", user_tz="America/Los_Angeles")
+    apply_event(s, "gmail_connected", {"demo": True})
+    s.deep_insights = found
+    orch.refresh_insights(s)
+    assert s.insights[0]["kind"] == "deep" and any(i["kind"] == "conflict" for i in s.insights)

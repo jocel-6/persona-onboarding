@@ -100,6 +100,17 @@ def wants_to_skip(text: str) -> bool:
 _CONDITIONAL_RE = re.compile(r"\b(until|unless|before|first|if|what|how|why|which|depends)\b", re.IGNORECASE)
 
 
+# While the Connect Gmail button is up, putting it off is a no for this conversation.
+_PUT_OFF_RE = re.compile(
+    r"\b(later|not now|not right now|not yet|another time|some other time|maybe later|next time|pass|skip (it|that))\b",
+    re.I,
+)
+
+
+def puts_off(text: str) -> bool:
+    return bool(_PUT_OFF_RE.search(text)) and not text.rstrip().endswith("?")
+
+
 def refuses_gmail(text: str) -> bool:
     asking = text.rstrip().endswith("?") or bool(_CONDITIONAL_RE.search(text))
     return bool(_GMAIL_NO_RE.search(text)) and not asking

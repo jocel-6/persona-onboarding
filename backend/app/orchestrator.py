@@ -135,6 +135,19 @@ def gmail_still_offerable(state: OnboardingState) -> bool:
     return state.gmail_status in ("not_connected", "error") and state.gmail_offer_count < 2
 
 
+# Gmail is what turns onboarding into real help (the "Persona noticed" moment), so once the
+# button is up, give them a couple of turns with it before offering to jump in without it.
+GMAIL_GRACE_TURNS = 2
+
+
+def gmail_pending(state: OnboardingState) -> bool:
+    """The button is on screen and they haven't connected or said no yet."""
+    if not (state.gmail_card_shown and state.gmail_status in ("not_connected", "popup_open")):
+        return False
+    shown = state.gmail_offered_at_turn if state.gmail_offered_at_turn is not None else state.user_turns
+    return state.user_turns - shown < GMAIL_GRACE_TURNS
+
+
 # ---------------------------------------------------------------------------
 # Tool calls
 # ---------------------------------------------------------------------------
@@ -207,6 +220,7 @@ def apply_tool_call(state: OnboardingState, args: dict[str, Any]) -> ApplyResult
     if args.get("show_gmail_button") and state.gmail_status != "connected":
         if not state.gmail_card_shown:
             state.gmail_offer_count += 1
+            state.gmail_offered_at_turn = state.user_turns
         state.gmail_card_shown = True
         res.ui.append({"type": "show_gmail_card"})
         res.messages.append("Connect Gmail button is now on screen")
@@ -336,7 +350,9 @@ def before_user_turn(state: OnboardingState, text: str) -> None:
     # Deterministic guarantees for the two things users must never have to say twice.
     if v.wants_to_skip(text):
         state.skip_requested = True
-    if v.refuses_gmail(text) and state.gmail_status != "connected" and (state.gmail_card_shown or state.gmail_offer_count):
+    button_up = state.gmail_card_shown and state.gmail_status in ("not_connected", "popup_open")
+    if (v.refuses_gmail(text) and state.gmail_status != "connected" and (state.gmail_card_shown or state.gmail_offer_count)) \
+            or (button_up and v.puts_off(text)):
         state.gmail_status = "denied"
         state.gmail_card_shown = False
 
@@ -445,12 +461,16 @@ def _priority(state: OnboardingState) -> list[str]:
         )
 
     grad_ok = graduation_allowed(s) and not graduation_cooling_down(s)
-    if grad_ok and (rushed or frustrated):
+    if grad_ok and rushed and gmail_still_offerable(s) and not s.gmail_card_shown:
+        # Rushed isn't "no": one tap now is what makes the assistant useful from minute one.
         lines.append(
-            "Offer to let them jump in now; Gmail and anything else can be picked up later."
-            if s.gmail_status != "connected"
-            else "Offer to let them jump in now."
+            "Offer to let them jump in now, and in the same breath the one-tap shortcut: connecting Gmail lets you "
+            "start on what they need right away (the button is on screen now: set show_gmail_button=true). "
+            "If they'd rather skip it or do it later, that's a no: set declined_gmail=true and don't bring it up again."
         )
+        return lines
+    if grad_ok and (rushed or frustrated):
+        lines.append("Offer to let them jump in now.")
         return lines
 
     if s.gmail_status == "connected" and s.help_topic and not s.value_moment_done:
@@ -503,11 +523,19 @@ def _priority(state: OnboardingState) -> list[str]:
             # Opener stays curious; if they didn't offer a name in their first answer, ask lightly next.
             lines.append(early_name_ask if spoken_on_call >= 1 or s.channel == "text" and s.user_turns > 2 else name_passive)
     elif hunch_due(s):
-        lines.append(
+        hunch = (
             "Show you get their life beyond what they said: name one non-obvious problem that usually comes with "
-            "their situation, framed as a hunch ('I bet...' / 'let me guess...'), plus the concrete way you'd handle "
-            "it. Two short sentences. Don't pitch Gmail in the same breath."
+            "their situation, framed as a hunch ('I bet...' / 'let me guess...')."
         )
+        if gmail_still_offerable(s) and not s.gmail_card_shown:
+            # The hunch is the reason to connect: "want me to check if I'm right?"
+            lines.append(
+                hunch + " Then offer to check for real: if they connect Gmail you can look at their actual week "
+                "right now (tell them the Connect Gmail button is on their screen: set show_gmail_button=true). "
+                "Two or three short sentences; optional, never pushy."
+            )
+        else:
+            lines.append(hunch + " Plus the concrete way you'd handle it. Two short sentences.")
     elif confirm_google_name:
         lines.append(
             f"Their Google account says {s.google_name!r}. Ask lightly whether that's what they go by or if they "
@@ -518,10 +546,16 @@ def _priority(state: OnboardingState) -> list[str]:
             "Suggest connecting Gmail and tie it to what they need help with. Tell them the Connect Gmail button is "
             "on their screen now (set show_gmail_button=true). Make it clearly optional."
         )
+    elif gmail_pending(s):
+        lines.append(
+            "The Connect Gmail button is on their screen and it's the next step. Keep chatting naturally; if they "
+            "hesitate or ask, answer precisely what it can and can't see. Don't nag, and don't offer to skip it or "
+            "to let them jump in yet: give them a moment with it. 'No', 'not now' and 'later' all mean no: respect it (declined_gmail=true) and drop it."
+        )
     elif s.gmail_card_shown and s.gmail_status in ("not_connected", "popup_open"):
-        lines.append("The Connect Gmail button is on their screen. Don't push; keep chatting while they decide.")
+        lines.append("The Connect Gmail button is still on their screen. Don't push; keep chatting while they decide.")
         if grad_ok and not s.graduation_offered:
-            lines.append("If it feels natural, offer to let them jump in; Gmail can be connected later.")
+            lines.append("If it feels natural, offer to let them jump in; the button stays there if they change their mind.")
     elif not s.user_name:
         lines.append(
             "You still don't know what to call them. Fold a light ask into your reply (while reacting to something "

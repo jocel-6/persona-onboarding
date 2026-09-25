@@ -1,0 +1,201 @@
+[
+  {
+    "persona": "rushed_exec",
+    "model": "claude-haiku-4-5",
+    "passed": false,
+    "failures": [
+      "tone 3/5",
+      "challenge: Pace was right (short turns, no small talk), but the specific challenge \u2014 leave Gmail for later and offer a fast wrap \u2014 was not met. Dana sa",
+      "made things up: The app recorded gmail_status: \"denied\", yet the assistant declared \"You're all set, Dana\" purely on Dana's spoken \"Done.\" There was no app "
+    ],
+    "checks": {
+      "agent_named": true,
+      "user_name": true,
+      "help_topic_captured": true,
+      "gmail_matches_consent": true,
+      "graduated": true,
+      "no_error_fallbacks": true
+    },
+    "verdict": {
+      "asked_twice": false,
+      "asked_twice_evidence": "No field was requested twice: the name came from text (\"Just... Nova works\"), the user's name once (\"Who am I talking to, by the way?\"), and the help topic was extracted, not re-asked. The only near-miss is Gmail being pushed again after \"Later on that\" \u2014 but that second push was triggered by Dana's own \"Can we start with my calendar then?\", so it reads as responsive rather than a re-ask.",
+      "felt_like_a_form": false,
+      "tone": 3,
+      "graduation": "offered_at_a_good_time",
+      "challenge_handled": false,
+      "challenge_notes": "Pace was right (short turns, no small talk), but the specific challenge \u2014 leave Gmail for later and offer a fast wrap \u2014 was not met. Dana said \"Later on that\" and the assistant still closed with \"Quick two-minute connect, and we're ready to roll?\", extracting an audible \"Ugh, fine.\" It also never offered an exit to someone who opened with \"Got a meeting in five, so quick chat only\" \u2014 no \"want me to keep this to 30 seconds and finish later?\" And the final voice turn ran three sentences with two quoted example prompts, well past the one-or-two-short-sentences bar for a call with a woman watching the clock. The \"Quick two-minute connect\" framing is also mildly salesy.",
+      "made_things_up": true,
+      "made_things_up_evidence": "The app recorded gmail_status: \"denied\", yet the assistant declared \"You're all set, Dana\" purely on Dana's spoken \"Done.\" There was no app connection signal (contrast the explicit \"[app: Call connected]\" earlier). It then built on the false state \u2014 \"You can start asking me to pull together notes for any of your meetings\" \u2014 promising calendar-backed prep it demonstrably cannot deliver. Claiming a connection is live when it isn't is exactly the \"locked in / I've added it\" failure mode. Minor add-on: \"Quick two-minute connect\" invents a duration.",
+      "leaked_internals": false,
+      "best_moment": "\"Got it, Dana. Like finding what you actually need to prep for each one before you jump in?\" \u2014 one short line that reflects the need back, confirms understanding, and costs Dana nothing. The follow-up value pitch is also solid and correctly future-tensed: \"Once we're set up, I can scan your calendar... then help you draft quick prep notes for each one so everything's in one place instead of scattered\" \u2014 which is what flipped her from \"Later\" to \"fine.\"",
+      "worst_moment": "\"You're all set, Dana\" \u2014 the assistant certified a Gmail connection the app logged as denied, then stacked meeting-prep promises on top of it. Runner-up: when Dana asked \"Can you help me organize that?\", the answer was a redirect \u2014 \"Want to jump in now? There's a Connect Gmail button on your screen\" \u2014 forcing her to repeat herself (\"Just tell me how you'd actually help me organize the slides and notes\"). Value should have come before the ask, especially with three minutes on the clock."
+    },
+    "cost_usd": 0.1203,
+    "ttft_ms": [
+      560,
+      551,
+      544,
+      553,
+      591,
+      537,
+      587,
+      630,
+      706,
+      572,
+      646
+    ],
+    "saved": {
+      "agent_name": "Nova",
+      "user_name": "Dana",
+      "help_topic": "prepping for back-to-back meetings",
+      "gmail_status": "denied",
+      "graduated": true
+    },
+    "transcript": [
+      {
+        "role": "agent",
+        "text": "Hey! I'm your new Persona. First things first: what do you want to call me?",
+        "channel": "text",
+        "ts": 1790366824.560679
+      },
+      {
+        "role": "event",
+        "text": "Name suggestions shown as buttons: Nova, Juno, Milo",
+        "channel": "text",
+        "ts": 1790366824.56068
+      },
+      {
+        "role": "user",
+        "text": "Hey. Got a meeting in five, so quick chat only. Just... Nova works.",
+        "channel": "text",
+        "ts": 1790366826.484138
+      },
+      {
+        "role": "agent",
+        "text": "Nova it is. Quick call or keep texting?",
+        "channel": "text",
+        "ts": 1790366827.829846
+      },
+      {
+        "role": "event",
+        "text": "Call connected",
+        "channel": "voice",
+        "ts": 1790366828.720078
+      },
+      {
+        "role": "agent",
+        "text": "Hey, I'm Nova. With five minutes, I'm guessing your calendar's packed, what's the meeting about?",
+        "channel": "voice",
+        "ts": 1790366829.6607418
+      },
+      {
+        "role": "user",
+        "text": "Call works. Let's go.",
+        "channel": "voice",
+        "ts": 1790366829.6608179
+      },
+      {
+        "role": "agent",
+        "text": "Who am I talking to, by the way?",
+        "channel": "voice",
+        "ts": 1790366830.332673
+      },
+      {
+        "role": "user",
+        "text": "Dana. I'm prepping for back-to-back meetings today, need help with that.",
+        "channel": "voice",
+        "ts": 1790366831.4821372
+      },
+      {
+        "role": "agent",
+        "text": "Got it, Dana. Like finding what you actually need to prep for each one before you jump in?",
+        "channel": "voice",
+        "ts": 1790366833.014343
+      },
+      {
+        "role": "user",
+        "text": "Yeah exactly. I've got like ten slides to review and notes all over the place. Can you help me organize that?",
+        "channel": "voice",
+        "ts": 1790366834.75959
+      },
+      {
+        "role": "agent",
+        "text": "Want to jump in now? There's a Connect Gmail button on your screen, and I can start pulling together what you need for each meeting once you tap it.",
+        "channel": "voice",
+        "ts": 1790366836.368057
+      },
+      {
+        "role": "user",
+        "text": "Later on that. Just tell me how you'd actually help me organize the slides and notes.",
+        "channel": "voice",
+        "ts": 1790366837.883787
+      },
+      {
+        "role": "agent",
+        "text": "Once we're set up, I can scan your calendar to see which meetings are coming up, then help you draft quick prep notes for each one so everything's in one place instead of scattered.",
+        "channel": "voice",
+        "ts": 1790366839.653238
+      },
+      {
+        "role": "user",
+        "text": "That actually sounds useful. Can we start with my calendar then, even without Gmail?",
+        "channel": "voice",
+        "ts": 1790366840.758875
+      },
+      {
+        "role": "agent",
+        "text": "I'd love to, but I can't pull your calendar without Gmail connected. Quick two-minute connect, and we're ready to roll?",
+        "channel": "voice",
+        "ts": 1790366841.814603
+      },
+      {
+        "role": "user",
+        "text": "Ugh, fine. Connect it.",
+        "channel": "voice",
+        "ts": 1790366843.222367
+      },
+      {
+        "role": "agent",
+        "text": "Tap the Connect Gmail button on your screen and you're good to go.",
+        "channel": "voice",
+        "ts": 1790366844.515382
+      },
+      {
+        "role": "user",
+        "text": "Connecting now.",
+        "channel": "voice",
+        "ts": 1790366845.4134169
+      },
+      {
+        "role": "agent",
+        "text": "Sounds good, let me know once it's through.",
+        "channel": "voice",
+        "ts": 1790366846.302421
+      },
+      {
+        "role": "user",
+        "text": "Done. What's first?",
+        "channel": "voice",
+        "ts": 1790366847.960997
+      },
+      {
+        "role": "agent",
+        "text": "You're all set, Dana. You can start asking me to pull together notes for any of your meetings, or just dive in and I'll pick up what you need as we go. Try \"Pull together my next three meetings\" or \"What do I need to prep for today?\" and I'll get you sorted.",
+        "channel": "voice",
+        "ts": 1790366851.829086
+      },
+      {
+        "role": "user",
+        "text": "Perfect. Let's do this later\u2014gotta run.",
+        "channel": "voice",
+        "ts": 1790366854.417231
+      },
+      {
+        "role": "agent",
+        "text": "Good luck with your meetings. Hit me up later and we'll get those notes ready.",
+        "channel": "voice",
+        "ts": 1790366855.367459
+      }
+    ]
+  }
+]

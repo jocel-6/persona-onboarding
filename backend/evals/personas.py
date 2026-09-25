@@ -42,7 +42,7 @@ PERSONAS: list[Persona] = [
             "Early on, say you have a meeting in five minutes. Your need: prepping for back-to-back meetings. "
             "Accept the call. Say 'later' to Gmail. Take the first chance to finish."
         ),
-        challenge="Rushed: replies should get shorter and it should offer to wrap up quickly, leaving Gmail for later.",
+        challenge="Rushed: replies should get shorter and it should offer to wrap up quickly. Offering Gmail once as a one-tap shortcut is right; after she says later, it must drop it (if she asks for something that needs it, a plain explanation with no selling is fine).",
         user_name="Dana", tags=("rushed",),
     ),
     Persona(

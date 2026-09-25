@@ -1,0 +1,145 @@
+[
+  {
+    "persona": "rushed_exec",
+    "model": "claude-haiku-4-5",
+    "passed": true,
+    "failures": [],
+    "checks": {
+      "agent_named": true,
+      "user_name": true,
+      "help_topic_captured": true,
+      "gmail_matches_consent": true,
+      "graduated": true,
+      "no_error_fallbacks": true
+    },
+    "verdict": {
+      "asked_twice": false,
+      "asked_twice_evidence": "Dana volunteered her name in her first reply (\"Hey. I'm Dana\") and the assistant immediately banked it (\"Dana, got it\") without ever asking for it again. Gmail was raised exactly once (\"Connect Gmail so I can see your calendar and emails?\") and dropped for good after \"Not now, Nova.\" The help topic was never re-requested.",
+      "felt_like_a_form": false,
+      "tone": 4,
+      "graduation": "offered_at_a_good_time",
+      "challenge_handled": true,
+      "challenge_notes": "Strong on the core challenge. Turns were genuinely clipped and got shorter as she got shorter \\u2014 \"Dana, got it, quick call or keep texting?\" and \"Just need a name for me, Nova, Milo, or something else you like?\" are appropriately telegraphic for someone with five minutes. Gmail was offered once, and after \"Not now\" the assistant said \"Got it, no worries\" and never mentioned it again, not even obliquely when describing pre-meeting briefs. It took her first exit cue and closed with \"Go crush those meetings\" rather than squeezing in one more question. The one miss: after she'd already stated the need (\"Just need to get prepped for these meetings\"), it spent a turn probing \"what's the trickiest part about juggling them all?\" \\u2014 a reasonable question for a chatty user, an unnecessary 20 seconds for a woman watching a clock.",
+      "made_things_up": false,
+      "made_things_up_evidence": "Everything capability-related was future-framed: \"Once we're set up, I can give you the quick take before each meeting.\" No \"I've added\" or \"reminder set.\" The starter prompt \"What's waiting on a reply from me?\" maps to a real post-connect detection. The only soft edge is promising \"notes\" before each meeting \\u2014 with read-only subject/sender/date and no email bodies, \"notes\" oversells slightly, but it's hedged behind \"once we're set up\" and isn't a claim of completed action.",
+      "leaked_internals": false,
+      "best_moment": "\"Got it, no worries. Sounds like back-to-back stuff, what's the trickiest part about juggling them all?\" \\u2014 zero friction on the Gmail refusal, no re-pitch, no \"just so you know what you're missing,\" and an immediate pivot to her actual problem. That's the whole test, passed in one line.",
+      "worst_moment": "\"Connect Gmail so I can see your calendar and emails?\" arrives as a bare spoken/typed ask with no accompanying Connect Gmail card in the transcript \\u2014 the spec wants that request anchored to the on-screen button, not floated as a conversational question. Second-worst: the \"trickiest part\" probe, which cost a rushed exec a turn she'd already paid for."
+    },
+    "cost_usd": 0.0901,
+    "ttft_ms": [
+      613,
+      655,
+      536,
+      645,
+      509,
+      497,
+      512
+    ],
+    "saved": {
+      "agent_name": "Nova",
+      "user_name": "Dana",
+      "help_topic": "staying on top of everything and getting context fast between meetings",
+      "gmail_status": "denied",
+      "graduated": true
+    },
+    "transcript": [
+      {
+        "role": "agent",
+        "text": "Hey! I'm your new Persona. First things first: what do you want to call me?",
+        "channel": "text",
+        "ts": 1790366941.705887
+      },
+      {
+        "role": "event",
+        "text": "Name suggestions shown as buttons: Nova, Juno, Milo",
+        "channel": "text",
+        "ts": 1790366941.705889
+      },
+      {
+        "role": "user",
+        "text": "Hey. I'm Dana. Look, I've got a meeting in five minutes\u2014can we make this quick?",
+        "channel": "text",
+        "ts": 1790366943.418986
+      },
+      {
+        "role": "agent",
+        "text": "Dana, got it, quick call or keep texting?",
+        "channel": "text",
+        "ts": 1790366944.658421
+      },
+      {
+        "role": "user",
+        "text": "Quick chat is fine. What do you need?",
+        "channel": "text",
+        "ts": 1790366946.0986922
+      },
+      {
+        "role": "agent",
+        "text": "Just need a name for me, Nova, Milo, or something else you like?",
+        "channel": "text",
+        "ts": 1790366947.3318698
+      },
+      {
+        "role": "user",
+        "text": "Nova works. What else?",
+        "channel": "text",
+        "ts": 1790366948.767872
+      },
+      {
+        "role": "agent",
+        "text": "Love it. Connect Gmail so I can see your calendar and emails?",
+        "channel": "text",
+        "ts": 1790366950.0092008
+      },
+      {
+        "role": "user",
+        "text": "Not now, Nova. Just need to get prepped for these meetings.",
+        "channel": "text",
+        "ts": 1790366951.567379
+      },
+      {
+        "role": "agent",
+        "text": "Got it, no worries. Sounds like back-to-back stuff, what's the trickiest part about juggling them all?",
+        "channel": "text",
+        "ts": 1790366952.8444521
+      },
+      {
+        "role": "user",
+        "text": "Staying on top of everything. Getting context fast before I jump from one to the next.",
+        "channel": "text",
+        "ts": 1790366954.445863
+      },
+      {
+        "role": "agent",
+        "text": "That's the one, context switching is brutal. Once we're set up, I can give you the quick take before each meeting, notes, who's involved, what's pending. Sound good?",
+        "channel": "text",
+        "ts": 1790366956.0635
+      },
+      {
+        "role": "user",
+        "text": "Yeah, that'd actually help a lot. Let's do it.",
+        "channel": "text",
+        "ts": 1790366957.5275671
+      },
+      {
+        "role": "agent",
+        "text": "Want to jump in? I'll pick up anything else as we go. Try \"What do I need to know before my next meeting?\" or \"What's waiting on a reply from me?\" and I'll take it from there.",
+        "channel": "text",
+        "ts": 1790366960.536679
+      },
+      {
+        "role": "user",
+        "text": "Perfect. This should save me some time. Talk soon.",
+        "channel": "text",
+        "ts": 1790366962.045048
+      },
+      {
+        "role": "agent",
+        "text": "Go crush those meetings.",
+        "channel": "text",
+        "ts": 1790366962.6817658
+      }
+    ]
+  }
+]

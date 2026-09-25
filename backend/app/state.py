@@ -55,6 +55,7 @@ class OnboardingState(BaseModel):
     account_snapshot: dict[str, Any] | None = None
     gmail_card_shown: bool = False
     gmail_offer_count: int = 0
+    gmail_offered_at_turn: int | None = None  # user_turns when the button went up (don't offer to skip right away)
 
     channel: Channel = "text"
     call_status: CallStatus = "not_started"

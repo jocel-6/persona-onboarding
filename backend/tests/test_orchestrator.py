@@ -265,3 +265,31 @@ def test_rushed_users_skip_the_wrap_up_ceremony():
     s = OnboardingState(agent_name="Kai", user_name="Dana", help_topic="meetings", wrapping_up=True, sentiment="rushed")
     note = orch.directors_note(s, channel="voice")
     assert "no tips, no questions" in note and "ready_to_start=true" in note
+
+
+def test_gmail_is_the_next_step_not_deferred():
+    s = OnboardingState(agent_name="Kai", user_name="Jo", help_topic="school emails", call_status="in_progress",
+                        channel="voice", user_turns=3)
+    note = orch.directors_note(s, channel="voice")
+    assert "framed as a hunch" in note and "show_gmail_button=true" in note  # the hunch is the reason to connect
+
+    orch.apply_tool_call(s, {"show_gmail_button": True})
+    s.hunch_done = True
+    note = orch.directors_note(s, channel="voice")
+    assert "it's the next step" in note and "Offer to let them jump in" not in note  # no "later" right away
+    s.user_turns += orch.GMAIL_GRACE_TURNS
+    assert "button stays there" in orch.directors_note(s, channel="voice")  # then they may skip it
+
+    r = OnboardingState(agent_name="Kai", user_name="Jo", help_topic="inbox", sentiment="rushed", user_turns=2,
+                        call_status="declined")
+    note = orch.directors_note(r, channel="text")
+    assert "one-tap shortcut" in note and "picked up later" not in note
+
+
+def test_later_means_no_while_the_gmail_button_is_up():
+    s = OnboardingState(agent_name="Kai", user_name="Dana", help_topic="inbox", gmail_card_shown=True, gmail_offer_count=1)
+    orch.before_user_turn(s, "Yeah, do it later though")
+    assert s.gmail_status == "denied" and not s.gmail_card_shown
+    s = OnboardingState(agent_name="Kai")
+    orch.before_user_turn(s, "I'll tell you later")  # no button up: just words
+    assert s.gmail_status == "not_connected"

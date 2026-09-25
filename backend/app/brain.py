@@ -261,6 +261,9 @@ class Brain:
         if state.skip_requested and not state.graduated:
             orch.graduate(state)  # the spec: if they ask to skip, let them go immediately
             ui_events.append({"type": "graduated"})
+        if orch.name_ideas_due(state):
+            state.name_ideas_shown = True
+            ui_events.append({"type": "name_suggestions", "names": orch.name_ideas()})
         if orch.call_offer_due(state):
             state.call_status = "offered"
             ui_events.append({"type": "show_call_offer"})

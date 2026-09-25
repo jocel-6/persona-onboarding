@@ -100,7 +100,11 @@ def test_call_flow_via_words():
 
 def test_director_note_priorities():
     s = OnboardingState()
-    assert "call you" in orch.directors_note(s, channel="text")
+    assert "Wait for their name" in orch.directors_note(s, channel="text")  # the opener asked who they are
+    s.user_name, s.user_turns = "Maya", 1
+    note = orch.directors_note(s, channel="text")
+    assert "Greet Maya by name" in note and "clearly optional" in note
+    s.user_name = None
 
     s.agent_name = "Nova"
     assert "quick two-minute call" in orch.directors_note(s, channel="text")
@@ -250,8 +254,11 @@ def test_graduation_is_not_offered_twice_in_a_row():
 
 
 def test_agent_naming_is_never_phrased_like_asking_their_name():
-    note = orch.directors_note(OnboardingState(), channel="text")
-    assert "name you, the assistant" in note and "never 'what should I call you?'" in note
+    s = OnboardingState(user_name="Dana", user_turns=1)
+    note = orch.directors_note(s, channel="text")
+    assert "give you a name" in note and "Never 'what should I call you?'" in note
+    s = OnboardingState(user_turns=1)  # they didn't say who they are: don't hold them up
+    assert "didn't share their name" in orch.directors_note(s, channel="text")
 
 
 def test_their_own_name_is_never_saved_as_the_agents_name():

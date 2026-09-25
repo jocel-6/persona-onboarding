@@ -18,9 +18,10 @@ def sse(resp):
 def test_full_flow_over_http():
     fake = FakeClient(
         [
+            ("Hey Maya! I'm your assistant. Want to give me a name?", {"user_name": "Maya"}, "tool_use"),
             ("Juno, love it! Up for a quick call, or keep texting?", {"agent_name": "Juno"}, "tool_use"),
-            ("Hey, it's Juno! Who am I talking to?", None, "end_turn"),
-            ("Nice to meet you, Maya!", {"user_name": "Maya"}, "tool_use"),
+            ("Hey Maya, it's Juno!", None, "end_turn"),
+            ("Got it.", None, "end_turn"),
             ("Looks like we got cut off! Want me to call back, or finish here?", None, "end_turn"),
             ("Welcome back, Maya!", None, "end_turn"),
         ]
@@ -30,9 +31,14 @@ def test_full_flow_over_http():
 
     created = c.post("/api/sessions").json()
     sid = created["state"]["session_id"]
-    assert created["ui"][0]["type"] == "name_suggestions"
+    assert created["ui"] == []  # who they are comes first; the "name me" buttons come after
     assert created["state"]["transcript"][0]["role"] == "agent"
     assert "messages" not in created["state"]  # raw history never leaves the server
+
+    evs = sse(c.post(f"/api/sessions/{sid}/messages", json={"text": "I'm Maya"}))
+    names = [e["ui"]["names"] for e in evs if e.get("type") == "ui" and e["ui"]["type"] == "name_suggestions"]
+    assert len(names) == 1 and len(names[0]) == 3 and "Nova" not in names[0]
+    assert evs[-2]["state"]["user_name"] == "Maya"
 
     evs = sse(c.post(f"/api/sessions/{sid}/messages", json={"text": "Juno"}))
     assert {"type": "ui", "ui": {"type": "show_call_offer"}} in evs
@@ -40,13 +46,13 @@ def test_full_flow_over_http():
 
     evs = sse(c.post(f"/api/sessions/{sid}/events", json={"type": "call_accepted"}))
     assert {"type": "ui", "ui": {"type": "ringing"}} in evs
-    assert len(fake.calls) == 1  # ringing needs no model turn
+    assert len(fake.calls) == 2  # ringing needs no model turn
 
     evs = sse(c.post(f"/api/sessions/{sid}/events", json={"type": "call_connected"}))
     assert evs[-2]["state"]["channel"] == "voice"
 
-    sse(c.post(f"/api/sessions/{sid}/messages", json={"text": "I'm Maya"}))
-    assert "[voice] I'm Maya" in json.dumps(fake.calls[-1]["messages"][-1])
+    sse(c.post(f"/api/sessions/{sid}/messages", json={"text": "school stuff"}))
+    assert "[voice] school stuff" in json.dumps(fake.calls[-1]["messages"][-1])
 
     evs = sse(c.post(f"/api/sessions/{sid}/events", json={"type": "hangup"}))
     st = evs[-2]["state"]

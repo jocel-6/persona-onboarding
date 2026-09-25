@@ -54,6 +54,7 @@ class OnboardingState(BaseModel):
     # private items already removed. Server-side only (never sent to the browser).
     account_snapshot: dict[str, Any] | None = None
     gmail_card_shown: bool = False
+    name_ideas_shown: bool = False  # the "name me" buttons appear once, after we know who they are
     gmail_offer_count: int = 0
     gmail_offered_at_turn: int | None = None  # user_turns when the button went up (don't offer to skip right away)
 

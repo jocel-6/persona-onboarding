@@ -273,13 +273,12 @@ def add_usage(into: dict[str, int], u: dict[str, int]) -> None:
 
 def new_state() -> OnboardingState:
     s = OnboardingState(user_tz="America/Los_Angeles")
-    opener = "Hey! I'm your new Persona. First things first: what do you want to call me?"
+    opener = "Hey! I'm your new Persona. Who am I talking to?"  # same as the app's first opener
     s.messages = [
         {"role": "user", "content": [{"type": "text", "text": "[event: the user opened Persona for the first time]"}]},
-        {"role": "assistant", "content": [{"type": "text", "text": f"{opener} (A few ideas: Nova, Juno, Milo.)"}]},
+        {"role": "assistant", "content": [{"type": "text", "text": opener}]},
     ]
     s.transcript.append(Turn(role="agent", text=opener, channel="text"))
-    s.transcript.append(Turn(role="event", text="Name suggestions shown as buttons: Nova, Juno, Milo", channel="text"))
     return s
 
 
@@ -299,6 +298,8 @@ async def run_convo(p: Persona, model: str, client: anthropic.AsyncAnthropic) ->
                 if ev["latency"]["ttft_ms"]:
                     c.ttfts.append(ev["latency"]["ttft_ms"])
         for u in ui:  # the agent heard "yes, call me" in words
+            if u["type"] == "name_suggestions":  # what the app shows as buttons (tapping one = typing it)
+                s.transcript.append(Turn(role="event", text="Name ideas shown as buttons: " + ", ".join(u["names"]), channel="text"))
             if u["type"] == "start_call":
                 await event("call_accepted")
                 await event("call_connected")

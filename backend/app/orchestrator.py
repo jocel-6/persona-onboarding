@@ -10,6 +10,8 @@ Responsibilities:
 
 from __future__ import annotations
 
+import random
+
 import zlib
 from dataclasses import dataclass, field
 from typing import Any
@@ -124,6 +126,22 @@ def hunch_due(state: OnboardingState) -> bool:
 
 def value_moment_due(state: OnboardingState) -> bool:
     return state.gmail_status == "connected" and bool(state.help_topic) and not state.value_moment_done and not state.graduated
+
+
+NAME_POOL = ["Juno", "Milo", "Kai", "Remy", "Wren", "Ollie", "Sage", "Pip", "Iris", "Rio"]
+
+
+def name_ideas() -> list[str]:
+    """Three ideas for the buttons (Nova is the default if they skip, so it isn't one)."""
+    return random.sample(NAME_POOL, 3)
+
+
+def name_ideas_due(state: OnboardingState) -> bool:
+    """Show the "name me" buttons once they've said who they are (or passed on it)."""
+    return (
+        not state.agent_name and not state.name_ideas_shown and state.channel == "text"
+        and state.call_status == "not_started" and (bool(state.user_name) or state.user_turns >= 1)
+    )
 
 
 def call_offer_due(state: OnboardingState) -> bool:
@@ -434,10 +452,15 @@ def _priority(state: OnboardingState) -> list[str]:
         ]
 
     if s.channel == "text" and not s.agent_name and not in_call(s):
+        if not s.user_name and s.user_turns == 0:
+            return ["You just asked who they are. Wait for their name."]
+        greet = f"Greet {s.user_name} by name" if s.user_name else "They didn't share their name; that's fine. Greet them warmly"
         return [
-            "Ask them to name you, the assistant (e.g. 'what do you want to name me?'; never 'what should I call you?'). "
-            "If they're unsure, suggest two or three short, friendly names. "
-            f"If they want to skip, that's fine: save agent_name={DEFAULT_AGENT_NAME!r}. "
+            f"{greet} and introduce yourself as their personal assistant, here for whatever they need (warm, "
+            "at their service, not servile). Then invite them to give you a name if they'd like, clearly optional "
+            f"(otherwise you'll go by {DEFAULT_AGENT_NAME}); a few ideas are on their screen as buttons. Two short "
+            "sentences. Never 'what should I call you?' (that sounds like asking their name). "
+            f"If they pass on naming you, save agent_name={DEFAULT_AGENT_NAME!r}. "
             "As soon as you have a name, react to it in a few words and, in the same reply, ask if they're up for a "
             "quick two-minute call right here in the browser, or would rather keep texting."
         ]

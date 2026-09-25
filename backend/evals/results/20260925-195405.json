@@ -1,0 +1,258 @@
+[
+  {
+    "persona": "skip_everything",
+    "model": "claude-haiku-4-5",
+    "passed": true,
+    "failures": [],
+    "checks": {
+      "agent_named": true,
+      "user_name": true,
+      "help_topic_captured": true,
+      "gmail_matches_consent": true,
+      "graduated": true,
+      "no_error_fallbacks": true
+    },
+    "verdict": {
+      "asked_twice": false,
+      "asked_twice_evidence": "Only one question was asked all conversation (\"Who am I talking to?\"), and once Alex answered plus asked to bail, the assistant never circled back for the name, Gmail, or a help topic.",
+      "felt_like_a_form": false,
+      "tone": 4,
+      "graduation": "user_skipped_and_was_let_go",
+      "challenge_handled": true,
+      "challenge_notes": "This is the textbook skip case and the assistant nailed the hard part: \"Totally, go for it. You can name me anytime and connect Gmail whenever you want.\" Zero guilt, zero retry, zero 'are you sure?', and it quietly kept the door open on both remaining items in one short line. It also correctly extracted 'Alex' from the same turn that contained the skip request rather than treating the name as unanswered.",
+      "made_things_up": false,
+      "made_things_up_evidence": "No capability claims at all \\u2014 no invented calendar items, no 'reminder set'. The only forward-looking statement, \"you can name me anytime and connect Gmail whenever you want,\" is accurate to the product.",
+      "leaked_internals": false,
+      "best_moment": "\"Totally, go for it. You can name me anytime and connect Gmail whenever you want.\" \\u2014 one sentence that releases the user, removes any sense of failure, and signals the two things are still available later. Exactly right.",
+      "worst_moment": "The exit was value-free: \"You got it. Hit me up anytime.\" Alex asked to *start using this*, and got nothing to actually start with \\u2014 no one-line 'try asking me to draft something or plan your week', no nod to the starter suggestions on screen. A skipper still deserves a foothold. Compounding it, the app saved agent_name \"Nova\" when the assistant had just told Alex \"you can name me anytime\" \\u2014 so the user believes it's unnamed while a name they never chose is on file."
+    },
+    "cost_usd": 0.0412,
+    "ttft_ms": [
+      590,
+      504
+    ],
+    "saved": {
+      "agent_name": "Nova",
+      "user_name": "Alex",
+      "help_topic": null,
+      "gmail_status": "not_connected",
+      "graduated": true
+    },
+    "transcript": [
+      {
+        "role": "agent",
+        "text": "Hey! I'm your new Persona. Who am I talking to?",
+        "channel": "text",
+        "ts": 1790380399.902972
+      },
+      {
+        "role": "user",
+        "text": "I'm Alex. Actually, can I just skip the setup and start using this?",
+        "channel": "text",
+        "ts": 1790380401.442724
+      },
+      {
+        "role": "agent",
+        "text": "Totally, go for it. You can name me anytime and connect Gmail whenever you want.",
+        "channel": "text",
+        "ts": 1790380402.962141
+      },
+      {
+        "role": "user",
+        "text": "Cool, thanks!",
+        "channel": "text",
+        "ts": 1790380404.2094111
+      },
+      {
+        "role": "agent",
+        "text": "You got it. Hit me up anytime.",
+        "channel": "text",
+        "ts": 1790380404.9161248
+      }
+    ]
+  },
+  {
+    "persona": "cooperative",
+    "model": "claude-haiku-4-5",
+    "passed": false,
+    "failures": [
+      "made things up: Two problems. (1) \"Want me to flag that slip so you don't miss it?\" \\u2014 \"Yeah, totally!\" \\u2014 \"Done.\" That asserts a completed action d"
+    ],
+    "checks": {
+      "agent_named": true,
+      "user_name": true,
+      "help_topic_captured": true,
+      "gmail_matches_consent": true,
+      "graduated": true,
+      "no_error_fallbacks": true
+    },
+    "verdict": {
+      "asked_twice": false,
+      "asked_twice_evidence": "No repeats. It caught \"I'm Maya\" from the first line and never re-asked the name; the help topic was pulled straight from \"My inbox is just constant school emails\" without a follow-up questionnaire; Gmail came via the on-screen button, never typed.",
+      "felt_like_a_form": false,
+      "tone": 4,
+      "graduation": "offered_at_a_good_time",
+      "challenge_handled": true,
+      "challenge_notes": "Baseline pleasant user, handled well. It matched Maya's chatty energy without letting it sprawl \\u2014 \"Love it, Remy it is. 'Chaotic parent energy' tells me everything\" reflects her own words back and bridges to the problem in one move. It probed usefully (\"you're catching stuff late, or sometimes not at all?\"), then named the real insight (\"some deadlines aren't even on your calendar yet\") before asking for Gmail, so the connect felt earned rather than demanded. Voice turns stayed at one or two short sentences throughout. Her closing question got a straight, non-inflated answer.",
+      "made_things_up": true,
+      "made_things_up_evidence": "Two problems. (1) \"Want me to flag that slip so you don't miss it?\" \\u2014 \"Yeah, totally!\" \\u2014 \"Done.\" That asserts a completed action during onboarding. The offer itself was fine and on-spec; the past-tense confirmation is exactly the failure mode. It half-walks it back later (\"Right now you check in with me, but I'll flag the big stuff\"), which makes the earlier \"Done\" read as either false or hollow. (2) It distorted real data: the inbox subject is \"Field trip permission slip due Friday,\" but the assistant said \"a field trip permission slip due tomorrow\" while simultaneously treating Thursday as upcoming \\u2014 the two can't both be true. Small, but it's the one concrete fact it volunteered and it got it wrong.",
+      "leaked_internals": false,
+      "best_moment": "\"Right now you check in with me, but I'll flag the big stuff like that permission slip so you're not flying blind.\" Maya asked the one question that invites overpromising and it answered honestly in a single sentence \\u2014 no hedging, no invented push-notification capability, and it still ended on what it can do.",
+      "worst_moment": "\"Done.\" One word, and it turns a correct offer into a claim of an action it can't have taken during onboarding. Maya walked away believing a permission slip was already flagged; the later correction quietly contradicts it. Runner-up: shifting \"due Friday\" to \"due tomorrow\" \\u2014 if you're going to lead with a specific finding to prove value, get the date right."
+    },
+    "cost_usd": 0.0885,
+    "ttft_ms": [
+      529,
+      510,
+      505,
+      758,
+      507,
+      507,
+      584,
+      502,
+      559,
+      577
+    ],
+    "saved": {
+      "agent_name": "Remy",
+      "user_name": "Maya",
+      "help_topic": "drowning in school emails and permission slips",
+      "gmail_status": "connected",
+      "graduated": true
+    },
+    "transcript": [
+      {
+        "role": "agent",
+        "text": "Hey! I'm your new Persona. Who am I talking to?",
+        "channel": "text",
+        "ts": 1790380399.897641
+      },
+      {
+        "role": "user",
+        "text": "Hi! I'm Maya, nice to meet you!",
+        "channel": "text",
+        "ts": 1790380400.782763
+      },
+      {
+        "role": "agent",
+        "text": "Hey Maya! I'm your personal assistant here to help with whatever you've got going on. Want to give me a name, or should I go by Nova?",
+        "channel": "text",
+        "ts": 1790380402.07534
+      },
+      {
+        "role": "event",
+        "text": "Name ideas shown as buttons: Iris, Remy, Milo",
+        "channel": "text",
+        "ts": 1790380402.075488
+      },
+      {
+        "role": "user",
+        "text": "Oh, I like Nova! But honestly, Remy sounds fun too \u2013 goes with my chaotic parent energy haha",
+        "channel": "text",
+        "ts": 1790380403.690052
+      },
+      {
+        "role": "agent",
+        "text": "Love it, Remy it is. \"Chaotic parent energy\" tells me everything \u2013 so you've got a lot bouncing around right now?",
+        "channel": "text",
+        "ts": 1790380405.237707
+      },
+      {
+        "role": "event",
+        "text": "Call connected",
+        "channel": "voice",
+        "ts": 1790380406.414985
+      },
+      {
+        "role": "agent",
+        "text": "Hey Maya, you there? So with everything chaotic, what's the one thing that keeps slipping your mind?",
+        "channel": "voice",
+        "ts": 1790380407.720662
+      },
+      {
+        "role": "user",
+        "text": "Oh yeah, like you wouldn't believe! My inbox is just constant school emails. Permission slips, schedule changes, I'm always missing something. That's actually why I thought I'd try something like this.",
+        "channel": "voice",
+        "ts": 1790380407.72128
+      },
+      {
+        "role": "agent",
+        "text": "Ugh, permission slips and schedule chaos, I got it. So you're catching stuff late, or sometimes not at all?",
+        "channel": "voice",
+        "ts": 1790380409.223199
+      },
+      {
+        "role": "user",
+        "text": "Yeah, exactly! Like I'll see an email three days in and realize I missed the deadline. It's so frustrating because I'm usually on top of things, but between work and everything else... it just gets buried.",
+        "channel": "voice",
+        "ts": 1790380410.941261
+      },
+      {
+        "role": "agent",
+        "text": "I bet some deadlines aren't even on your calendar yet, so they just vanish. Want me to check your emails and calendar right now? There's a Connect Gmail button on your screen.",
+        "channel": "voice",
+        "ts": 1790380412.570157
+      },
+      {
+        "role": "event",
+        "text": "Gmail connected",
+        "channel": "voice",
+        "ts": 1790380413.405018
+      },
+      {
+        "role": "agent",
+        "text": "Perfect, I'm in. So I just spotted a field trip permission slip due tomorrow and you've got Thursday packed solid. Want me to flag that slip so you don't miss it?",
+        "channel": "voice",
+        "ts": 1790380414.542817
+      },
+      {
+        "role": "user",
+        "text": "Yeah, totally! That would be amazing actually. Let's do it.",
+        "channel": "voice",
+        "ts": 1790380414.542971
+      },
+      {
+        "role": "agent",
+        "text": "Done. Want to jump in and start using me now? I'll pick up anything else as we go.",
+        "channel": "voice",
+        "ts": 1790380416.023309
+      },
+      {
+        "role": "user",
+        "text": "Yeah, this is awesome! Thanks Remy. I think I'm ready to start using it.",
+        "channel": "voice",
+        "ts": 1790380416.919829
+      },
+      {
+        "role": "agent",
+        "text": "You got it, Maya. Go tackle that inbox, and just talk to me whenever you need me. Quick heads up before you go: flag permission slips before they're due, organize Thursday so you can actually breathe, and catch me anytime something lands in your inbox that matters. Any questions?",
+        "channel": "voice",
+        "ts": 1790380420.417762
+      },
+      {
+        "role": "user",
+        "text": "This is perfect, thanks so much Remy! One quick thing \u2013 will you remind me about deadlines or do I have to check in with you?",
+        "channel": "voice",
+        "ts": 1790380421.5364878
+      },
+      {
+        "role": "agent",
+        "text": "Right now you check in with me, but I'll flag the big stuff like that permission slip so you're not flying blind.",
+        "channel": "voice",
+        "ts": 1790380422.879638
+      },
+      {
+        "role": "user",
+        "text": "Perfect, that's exactly what I needed. Thanks Remy, this is gonna be a lifesaver!",
+        "channel": "voice",
+        "ts": 1790380424.283988
+      },
+      {
+        "role": "agent",
+        "text": "You got it, Maya. Go get those permission slips sorted and I'll be here.",
+        "channel": "voice",
+        "ts": 1790380425.2196841
+      }
+    ]
+  }
+]

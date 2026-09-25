@@ -80,11 +80,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-NAME_POOL = ["Nova", "Juno", "Milo", "Kai", "Remy", "Wren", "Ollie", "Sage", "Pip", "Iris"]
+# The opener finds out who they are first; naming the assistant comes right after, and is optional.
 OPENERS = [
-    "Hey! I'm your new Persona. First things first: what do you want to call me?",
-    "Hi there! Before anything else, I need a name. What should you call me?",
-    "Hey, nice to meet you! Let's start with the fun part: what do you want to call me?",
+    "Hey! I'm your new Persona. Who am I talking to?",
+    "Hi there! I'm your Persona. First things first, who do I have the pleasure of helping?",
+    "Hey, welcome! I'm your new Persona. What's your name?",
 ]
 
 # Events that, during a live voice call, should be spoken on the call rather than texted.
@@ -339,16 +339,15 @@ class SessionIn(BaseModel):
 def create_session(body: SessionIn | None = None) -> dict[str, Any]:
     state = OnboardingState(user_tz=(body.tz if body else None) or None)
     opener = random.choice(OPENERS)
-    names = random.sample(NAME_POOL, 3)
     # Seed the history so the model knows what it already said. Static text,
     # so it doesn't hurt caching.
     state.messages = [
         {"role": "user", "content": [{"type": "text", "text": "[event: the user opened Persona for the first time]"}]},
-        {"role": "assistant", "content": [{"type": "text", "text": f"{opener} (A few ideas: {', '.join(names)}.)"}]},
+        {"role": "assistant", "content": [{"type": "text", "text": opener}]},
     ]
     state.transcript.append(Turn(role="agent", text=opener, channel="text"))
     store.save(state)
-    return {"state": state.public_view(), "ui": [{"type": "name_suggestions", "names": names}], "config": _config()}
+    return {"state": state.public_view(), "ui": [], "config": _config()}
 
 
 @app.get("/api/sessions/{session_id}")

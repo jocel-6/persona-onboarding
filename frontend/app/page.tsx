@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   API_URL,
+  sendFeedback,
   addInsightFix,
   callMyPhone,
   draftReply,
@@ -1739,6 +1740,7 @@ function DonePanel({
         <p className="muted">{s.agent_name} is ready. Here&apos;s what it knows so far; tap anything to fix it.</p>
         <RecapRows {...props} />
         {s.tomorrow && s.gmail_status === "connected" && <TomorrowCard t={s.tomorrow} />}
+        <FeedbackBox s={s} onSaved={props.onSaved} />
         {s.starter_suggestions.length > 0 && (
           <>
             <p className="small muted">Try one of these first:</p>
@@ -1757,6 +1759,63 @@ function DonePanel({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** A quick "how was that?" so testers' reactions land next to their conversation. */
+function FeedbackBox({ s, onSaved }: { s: SessionState; onSaved: (s: SessionState) => void }) {
+  const [text, setText] = useState(s.feedback_text ?? "");
+  const [sent, setSent] = useState(Boolean(s.feedback_text));
+  const [err, setErr] = useState<string | null>(null);
+  const send = (fb: { rating?: "up" | "down"; text?: string }) =>
+    sendFeedback(s.session_id, fb)
+      .then((st) => {
+        onSaved(st);
+        setErr(null);
+        if (fb.text !== undefined) setSent(true);
+      })
+      .catch((e: Error) => setErr(e.message));
+  return (
+    <div className="feedback">
+      <div className="feedback-head">
+        <span className="small">How did that feel?</span>
+        {(["up", "down"] as const).map((r) => (
+          <button
+            key={r}
+            className={`toggle${s.feedback_rating === r ? " on" : ""}`}
+            aria-pressed={s.feedback_rating === r}
+            aria-label={r === "up" ? "Good" : "Not great"}
+            onClick={() => void send({ rating: r })}
+          >
+            {r === "up" ? "👍" : "👎"}
+          </button>
+        ))}
+      </div>
+      {s.feedback_rating &&
+        (sent ? (
+          <p className="small muted">Thanks, that helps.</p>
+        ) : (
+          <form
+            className="edit-row"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (text.trim()) void send({ text });
+            }}
+          >
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={s.feedback_rating === "up" ? "What felt good? (optional)" : "What felt off? (optional)"}
+              aria-label="Feedback"
+              maxLength={1000}
+            />
+            <button className="ghost small" type="submit" disabled={!text.trim()}>
+              Send
+            </button>
+          </form>
+        ))}
+      {err && <p className="small error-text">{err}</p>}
     </div>
   );
 }

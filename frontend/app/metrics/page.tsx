@@ -19,6 +19,7 @@ type Metrics = {
   funnel: { step: string; count: number; drop_pct: number | null }[];
   voice_latency_hist: { from: number; to: number | null; count: number }[];
   by_model: { model: string; turns: number; ttft_p50: number | null; cost_per_turn: number | null }[];
+  feedback?: { up: number; down: number; comments: { rating: "up" | "down" | null; text: string }[] };
 };
 
 const RANGES = [
@@ -59,7 +60,7 @@ export default function MetricsPage() {
       <header className="metrics-head">
         <div>
           <h1>Persona metrics</h1>
-          <p className="muted small">Onboarding funnel, speed and cost. Counts and timings only, never conversation content.</p>
+          <p className="muted small">Onboarding funnel, speed and cost. Counts and timings, plus the feedback testers chose to send. Never conversation content.</p>
         </div>
         <div className="range" role="group" aria-label="Time range">
           {RANGES.map((r) => (
@@ -118,6 +119,27 @@ export default function MetricsPage() {
               </tbody>
             </table>
           </section>
+
+          {data.feedback && (
+            <section className="card metrics-card">
+              <h2>Feedback</h2>
+              <p className="muted small">
+                👍 {data.feedback.up} · 👎 {data.feedback.down}
+              </p>
+              {data.feedback.comments.length === 0 ? (
+                <p className="muted small">No comments yet.</p>
+              ) : (
+                <ul className="feedback-list">
+                  {data.feedback.comments.map((c, i) => (
+                    <li key={i}>
+                      <span aria-label={c.rating === "down" ? "Not great" : "Good"}>{c.rating === "down" ? "👎" : "👍"}</span>{" "}
+                      {c.text}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
         </>
       )}
     </main>

@@ -91,6 +91,9 @@ class OnboardingState(BaseModel):
     graduation_offered_at_turn: int | None = None
     graduation_declined_at_turn: int | None = None
     graduated: bool = False
+    # Quick feedback from the "You're in" screen.
+    feedback_rating: Literal["up", "down"] | None = None
+    feedback_text: str | None = None
 
     # Slots that were corrected at least once, so the recap can show them.
     corrected: list[str] = Field(default_factory=list)

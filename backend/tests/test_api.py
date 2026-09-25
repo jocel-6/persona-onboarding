@@ -154,3 +154,27 @@ def test_phone_calls_are_off_until_configured_and_numbers_are_cleaned():
     text = recap_text(s, "https://persona.example")
     assert text.startswith("Juno here!") and "school emails" in text and "Still to do: Gmail" in text
     assert "https://persona.example" in text and len(text) <= 640
+
+
+def test_feedback_is_saved_and_conversations_need_the_token(monkeypatch):
+    import dataclasses
+
+    from app import runtime
+
+    c = TestClient(main.app)
+    sid = c.post("/api/sessions").json()["state"]["session_id"]
+    st = c.post(f"/api/sessions/{sid}/feedback", json={"rating": "up", "text": "  felt natural  "}).json()["state"]
+    assert st["feedback_rating"] == "up" and st["feedback_text"] == "felt natural"
+    assert c.post(f"/api/sessions/{sid}/feedback", json={"rating": "meh"}).status_code == 422
+
+    s = dataclasses.replace(runtime.settings, metrics_token="")
+    monkeypatch.setattr(main, "settings", s)
+    assert c.get("/api/conversations").status_code == 401  # off when no token is configured
+    monkeypatch.setattr(main, "settings", dataclasses.replace(s, metrics_token="t0k"))
+    assert c.get("/api/conversations?token=wrong").status_code == 401
+    runtime.store.save_tokens(sid, {"access_token": "secret-at"})
+    state = runtime.store.get(sid)
+    state.user_turns = 1
+    runtime.store.save(state)
+    body = c.get("/api/conversations?token=t0k").text
+    assert sid[:8] in body and "felt natural" in body and "secret-at" not in body

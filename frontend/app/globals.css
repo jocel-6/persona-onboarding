@@ -1083,3 +1083,41 @@ button.danger {
 .card.insights.collapsed .link {
   margin-left: auto;
 }
+
+.feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+.feedback-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.feedback-head span {
+  margin-right: auto;
+}
+.feedback .toggle {
+  min-height: 32px;
+  padding: 2px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  font-size: 16px;
+}
+.feedback .toggle.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.feedback-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}

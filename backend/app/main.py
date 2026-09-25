@@ -33,7 +33,7 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -493,6 +493,48 @@ def export_session(session_id: str) -> Response:
         media_type="application/json",
         headers={"Content-Disposition": 'attachment; filename="persona-my-data.json"'},
     )
+
+
+class FeedbackIn(BaseModel):
+    rating: Literal["up", "down"] | None = None
+    text: str | None = Field(default=None, max_length=1000)
+
+
+@app.post("/api/sessions/{session_id}/feedback")
+async def feedback(session_id: str, body: FeedbackIn) -> dict[str, Any]:
+    """Thumbs up/down and an optional line, from the "You're in" screen."""
+    async with runtime.locks[session_id]:
+        state = _load(session_id)
+        if body.rating:
+            state.feedback_rating = body.rating
+        if body.text is not None:
+            state.feedback_text = body.text.strip()[:1000] or None
+        store.save(state)
+    log.info("feedback %s: %s%s", session_id[:8], state.feedback_rating, " + comment" if state.feedback_text else "")
+    return {"state": state.public_view()}
+
+
+@app.get("/api/conversations")
+def conversations(token: str = "", limit: int = 10) -> dict[str, Any]:
+    """The owner's view of recent conversations, for reading how testers got on.
+
+    Locked with METRICS_TOKEN, and off entirely when none is set. Transcripts and what was
+    collected only: no Google tokens, no calendar or inbox data.
+    """
+    if not settings.metrics_token or token != settings.metrics_token:
+        raise HTTPException(401, "token required")
+    states = sorted(store.session_states(0), key=lambda s: s.updated_at, reverse=True)
+    out = []
+    for s in [s for s in states if s.user_turns > 0][: max(1, min(limit, 50))]:
+        out.append({
+            "session": s.session_id[:8],
+            "updated_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(s.updated_at)),
+            "collected": {k: getattr(s, k) for k in ("agent_name", "user_name", "help_topic", "gmail_status", "graduated")},
+            "call_status": s.call_status,
+            "feedback": {"rating": s.feedback_rating, "text": s.feedback_text},
+            "transcript": [{"role": t.role, "channel": t.channel, "text": t.text} for t in s.transcript],
+        })
+    return {"conversations": out}
 
 
 @app.get("/api/metrics")

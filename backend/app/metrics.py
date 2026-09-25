@@ -98,6 +98,15 @@ def compute(turns: list[dict[str, Any]], sessions: list[OnboardingState]) -> dic
             "voice_turns_with_audio": len(voice_audio),
         },
         "funnel": funnel,
+        "feedback": {
+            "up": sum(s.feedback_rating == "up" for s in real),
+            "down": sum(s.feedback_rating == "down" for s in real),
+            # Comments are what testers chose to send, so they're shown (newest first).
+            "comments": [
+                {"rating": s.feedback_rating, "text": s.feedback_text}
+                for s in sorted(real, key=lambda s: s.updated_at, reverse=True) if s.feedback_text
+            ][:20],
+        },
         "voice_latency_hist": hist,
         "by_model": by_model,
     }

@@ -1,5 +1,7 @@
 # Persona onboarding
 
+[![CI](https://github.com/jocel-6/persona-onboarding/actions/workflows/ci.yml/badge.svg)](https://github.com/jocel-6/persona-onboarding/actions/workflows/ci.yml)
+
 An adaptive voice + text onboarding agent. In the first five minutes it learns four things (a name for itself, your name, a connected Gmail, and what you need help with) through a conversation that feels like talking to a friend, then proves it's already useful with something real from your calendar or inbox.
 
 **What's worth a look:**

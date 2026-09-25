@@ -185,3 +185,48 @@ def test_tone_of_voice_summaries_are_plain_and_only_confident():
     assert summarize({"Joy": 0.6, "Excitement": 0.5})[1] == "enthusiastic"
     assert summarize({"Calmness": 0.1}) == (None, None)
     assert to_wav(b"\x00\x00" * 16000, 16000, 1)[:4] == b"RIFF"
+
+
+def test_a_confirmed_speculation_cut_off_by_more_speech_carries_over(monkeypatch):
+    """Flux confirmed "I'm Jordan, and what I need is", then they kept going: keep the start."""
+    import os
+    os.environ.setdefault("DB_PATH", ":memory:")
+    from app import runtime
+    from app.voice.call import BrainService
+
+    client = FakeClient([])
+    client.stream = lambda **kw: SlowStream()
+    monkeypatch.setattr(runtime, "brain", Brain(Settings(), client=client))
+    s = OnboardingState(agent_name="Iris", call_status="in_progress", channel="voice")
+    runtime.store.save(s)
+
+    class FakeCall:
+        session_id = s.session_id
+        stopping = False
+
+    bs = BrainService(FakeCall())
+
+    async def nothing(*a, **k):
+        pass
+
+    bs.push_frame = bs._send = bs._set_idle_timeout = nothing
+    bs._listen_to_tone = lambda *a: None
+    bs.create_task = lambda coro, name=None: asyncio.get_running_loop().create_task(coro)
+
+    async def cancel(task, timeout=None):
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    bs.cancel_task = cancel
+
+    async def go():
+        await bs.start_turn(user_text="I'm Jordan, and what I need is", speculative=True)
+        while not bs._held:
+            await asyncio.sleep(0.01)
+        await bs._confirm_speculation()
+        bs._cancelled_by_user = True  # they kept talking before hearing a word
+        await bs._cancel_turn()
+        bs._cancelled_by_user = False
+
+    asyncio.run(go())
+    assert bs._carryover == "I'm Jordan, and what I need is"

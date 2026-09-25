@@ -383,9 +383,11 @@ class BrainService(FrameProcessor):
                 finished = True
             finally:
                 await gen.aclose()  # repairs history if we were cut off
-                if not finished and (self._discard or speculative):
+                if not finished and (self._discard or self._speculating):
                     # A withdrawn speculation: the user never heard it, so it never happened. No
                     # carryover either: Flux's committed transcript already has the whole turn.
+                    # (Checks the live flag: a speculation that was already confirmed is a real
+                    # turn, and if they keep talking it's a fragment like any other.)
                     state = before
                     self._last_turn_ref = None
                 elif not finished and user_text is not None and self._cancelled_by_user and not self._audio_started:

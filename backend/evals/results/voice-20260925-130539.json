@@ -1,0 +1,28 @@
+[
+  {
+    "scenario": "baseline",
+    "voice": "Skylar",
+    "speed": 1.0,
+    "wer": 0.0,
+    "key_terms": "2/2",
+    "name_saved": true,
+    "saved_name": "Maya",
+    "heard": "Hi. I'm Maya. And, honestly, my inbox has been a total disaster since school started.",
+    "latency_ms": [
+      1787
+    ]
+  },
+  {
+    "scenario": "pause_mid_thought",
+    "voice": "Cathy",
+    "speed": 1.0,
+    "wer": 0.077,
+    "key_terms": "2/2",
+    "name_saved": false,
+    "saved_name": null,
+    "heard": "I'm Jordan, and what I really need is Help remembering my friend's birthdays.",
+    "latency_ms": [
+      1175
+    ]
+  }
+]

@@ -1,0 +1,15 @@
+[
+  {
+    "scenario": "pause_mid_thought",
+    "voice": "Cathy",
+    "speed": 1.0,
+    "wer": 0.077,
+    "key_terms": "2/2",
+    "name_saved": true,
+    "saved_name": "Jordan",
+    "heard": "I'm Jordan, and what I really need is help remembering my friend's birthdays.",
+    "latency_ms": [
+      1252
+    ]
+  }
+]

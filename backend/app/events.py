@@ -23,6 +23,7 @@ EventType = Literal[
     "gmail_connected",
     "gmail_closed",
     "gmail_denied",
+    "gmail_disconnected",
     "graduate",
     "resumed",
 ]
@@ -96,29 +97,72 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
         ), ui
 
     if t == "gmail_popup_opened":
-        state.gmail_status = "popup_open"
+        if state.gmail_status != "connected":
+            state.gmail_status = "popup_open"
+        state.google_result = None
         return None, ui
 
     if t == "gmail_connected":
-        email = str(data.get("email") or "").strip()
-        google_name = str(data.get("name") or "").strip().split(" ")[0]
-        if google_name:
-            state.google_name = google_name
+        from . import runtime
+        from .google import demo_snapshot
+
+        if data.get("demo"):
+            if not runtime.settings.allow_demo_data:
+                return None, ui
+            state.account_snapshot = demo_snapshot()
+            state.gmail_demo = True
+            state.gmail = "demo account"
+        elif runtime.settings.gmail_stub:
+            email = str(data.get("email") or "").strip()
+            google_name = str(data.get("name") or "").strip().split(" ")[0]
+            if google_name:
+                state.google_name = google_name
+            state.gmail = email or "connected"
+        elif state.gmail_status != "connected" or not runtime.store.get_tokens(state.session_id):
+            # Real mode: only the OAuth callback can connect Gmail; the browser can't claim it.
+            return None, ui
         state.gmail_status = "connected"
-        state.gmail = email or "connected"
         state.gmail_card_shown = False
+        state.value_moment_done = False
         state.turns_since_progress = 0
-        orch.add_event_turn(state, "Gmail connected")
+        orch.add_event_turn(state, "Demo data connected" if state.gmail_demo else "Gmail connected")
         ui.append({"type": "hide_gmail_card"})
+        if state.gmail_demo:
+            return (
+                "the user chose the demo account instead of signing in with Google. Confirm in a few words that "
+                "you're using demo data, then continue."
+            ), ui
         return "the user just connected Gmail. Confirm it warmly in a few words, then continue.", ui
 
+    if t == "gmail_disconnected":
+        state.gmail_status = "not_connected"
+        state.gmail = None
+        state.gmail_demo = False
+        state.account_snapshot = None
+        orch.add_event_turn(state, "Gmail disconnected")
+        return "the user disconnected Gmail. Acknowledge in a few words, no guilt, and carry on.", ui
+
     if t in ("gmail_closed", "gmail_denied"):
+        from . import runtime
+
         state.gmail_status = "not_connected" if t == "gmail_closed" else "denied"
         state.gmail_card_shown = False
         ui.append({"type": "hide_gmail_card"})
+        reason = str(data.get("reason") or "")
+        if reason == "missing_scopes":
+            return (
+                "the user signed in with Google but unticked the calendar or email permissions, so nothing was "
+                "connected. No guilt: say that's totally fine, it can be connected later, and keep going."
+            ), ui
+        hint = ""
+        if not runtime.settings.gmail_stub and t == "gmail_closed":
+            hint = (
+                " If it seems relevant, mention in one short line that Google blocks accounts that aren't on this "
+                "test app's list, and that they can use the demo account or skip for now."
+            )
         return (
             "the user closed the Google sign-in without connecting. No guilt: say they can connect it later, and "
-            "keep going."
+            "keep going." + hint
         ), ui
 
     if t == "graduate":

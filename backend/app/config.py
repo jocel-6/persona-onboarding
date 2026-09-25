@@ -10,6 +10,17 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BACKEND_DIR.parent / ".env")
 load_dotenv(BACKEND_DIR / ".env")
 
+# Python from python.org on macOS ships without trusted root certificates, so the
+# voice websockets (Deepgram, Cartesia) fail with CERTIFICATE_VERIFY_FAILED unless
+# "Install Certificates.command" was run. Point Python at certifi's bundle instead.
+if not os.environ.get("SSL_CERT_FILE"):
+    try:
+        import certifi
+
+        os.environ["SSL_CERT_FILE"] = certifi.where()
+    except ImportError:
+        pass
+
 
 def _env(name: str, default: str = "") -> str:
     """Read an env var, treating a stray inline comment as empty.
@@ -28,8 +39,18 @@ class Settings:
     llm_effort: str = field(default_factory=lambda: _env("LLM_EFFORT", "low"))
     db_path: str = field(default_factory=lambda: _env("DB_PATH", str(BACKEND_DIR / "data" / "sessions.db")))
     frontend_origin: str = field(default_factory=lambda: _env("FRONTEND_ORIGIN", "http://localhost:3000"))
-    # Phase 1 stand-in for the real Google sign-in (Phase 3). Off in production.
-    gmail_stub: bool = field(default_factory=lambda: _env("GMAIL_STUB", "1") == "1")
+    # ---- Gmail (Phase 3) ----
+    google_client_id: str = field(default_factory=lambda: _env("GOOGLE_CLIENT_ID", ""))
+    google_client_secret: str = field(default_factory=lambda: _env("GOOGLE_CLIENT_SECRET", ""))
+    google_redirect_uri: str = field(
+        default_factory=lambda: _env("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/google/callback")
+    )
+    # The fake sign-in popup, used automatically until Google credentials are set.
+    gmail_stub: bool = field(
+        default_factory=lambda: _env("GMAIL_STUB", "0" if _env("GOOGLE_CLIENT_ID") else "1") == "1"
+    )
+    # Offer a clearly labeled "use demo data" option for reviewers who can't sign in.
+    allow_demo_data: bool = field(default_factory=lambda: _env("ALLOW_DEMO_DATA", "1") == "1")
 
     # ---- Voice (Phase 2) ----
     deepgram_api_key: str = field(default_factory=lambda: _env("DEEPGRAM_API_KEY", ""))

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  API_URL,
   createSession,
   deleteSession,
   getSession,
@@ -17,6 +18,8 @@ import { startVoiceCall, type VoiceCall } from "@/lib/voice";
 const SESSION_KEY = "persona.session";
 const RING_TIMEOUT_MS = 20_000;
 const DEFAULT_CHIPS = ["Nova", "Juno", "Milo"];
+const GOOGLE_POLL_MS = 1500;
+const GOOGLE_TIMEOUT_MS = 3 * 60_000;
 // When the agent ends the call (graduation, "can we text instead?"), let it finish its sentence.
 const END_AFTER_SPEECH_GRACE_MS = 1500;
 
@@ -35,6 +38,9 @@ export default function Onboarding() {
   const [callback, setCallback] = useState(false);
   const [gmailCard, setGmailCard] = useState(false);
   const [gmailPopup, setGmailPopup] = useState(false);
+  const [googleWaiting, setGoogleWaiting] = useState(false);
+  const googleCleanup = useRef<(() => void) | null>(null);
+  const cancelGoogleRef = useRef<(() => void) | null>(null);
   const [callView, setCallView] = useState<CallView>("none");
   const [doneDismissed, setDoneDismissed] = useState(false);
   const [debug, setDebug] = useState(false);
@@ -47,6 +53,9 @@ export default function Onboarding() {
   const [userSpeaking, setUserSpeaking] = useState(false);
   const [muted, setMuted] = useState(false);
   const [callNote, setCallNote] = useState<string | null>(null);
+  const [micLevel, setMicLevel] = useState(0);
+  const [micName, setMicName] = useState<string | null>(null);
+  const [micProblem, setMicProblem] = useState<string | null>(null);
   const botSpeakingRef = useRef(false);
   const endAfterSpeechRef = useRef(false);
   const voiceTextRef = useRef("");
@@ -262,6 +271,85 @@ export default function Onboarding() {
     await boot(true);
   };
 
+  // ---- Gmail ----------------------------------------------------------
+
+  /**
+   * Real mode: Google sign-in in a popup. Google's pages can cut the popup's link back
+   * to us, so we don't rely on postMessage or window.closed: the server records how
+   * sign-in ended and we poll for it (postMessage is just a faster path when it works).
+   */
+  const connectGmail = useCallback(() => {
+    if (!sessionId) return;
+    if (config.gmail_mode !== "google") {
+      setGmailPopup(true);
+      void sendEvent("gmail_popup_opened");
+      return;
+    }
+    // Must open synchronously on the click, or popup blockers step in.
+    const w = window.open(
+      `${API_URL}/api/google/start?session_id=${sessionId}`,
+      "persona-google",
+      "width=500,height=680",
+    );
+    if (!w) {
+      setError("Your browser blocked the Google sign-in window. Allow pop-ups for this site, then try again.");
+      return;
+    }
+    void sendEvent("gmail_popup_opened");
+    setGoogleWaiting(true);
+    let done = false;
+    const finish = (result: string) => {
+      if (done) return;
+      done = true;
+      googleCleanup.current?.();
+      setGoogleWaiting(false);
+      try {
+        w.close();
+      } catch {}
+      if (result === "ok") void sendEvent("gmail_connected");
+      else if (result === "denied") void sendEvent("gmail_denied");
+      else void sendEvent("gmail_closed", { reason: result });
+    };
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== new URL(API_URL).origin || e.data?.source !== "persona-google") return;
+      finish(e.data.ok ? "ok" : String(e.data.reason || "error"));
+    };
+    window.addEventListener("message", onMessage);
+    const poll = setInterval(async () => {
+      try {
+        const got = await getSession(sessionId);
+        const r = got?.state.google_result;
+        if (r) finish(r);
+      } catch {}
+    }, GOOGLE_POLL_MS);
+    const timeout = setTimeout(() => finish("closed"), GOOGLE_TIMEOUT_MS);
+    googleCleanup.current = () => {
+      window.removeEventListener("message", onMessage);
+      clearInterval(poll);
+      clearTimeout(timeout);
+      googleCleanup.current = null;
+    };
+    // Cancel = the user gave up on the popup.
+    cancelGoogleRef.current = () => finish("closed");
+  }, [config.gmail_mode, sendEvent, sessionId]);
+  useEffect(() => () => googleCleanup.current?.(), []);
+
+  const chooseDemoData = useCallback(() => {
+    googleCleanup.current?.();
+    setGoogleWaiting(false);
+    void sendEvent("gmail_connected", { demo: true });
+  }, [sendEvent]);
+
+  const gmailCardProps = {
+    mode: config.gmail_mode ?? (config.gmail_stub ? "stub" : "google"),
+    demo: !!config.demo_data,
+    waiting: googleWaiting,
+    onConnect: connectGmail,
+    onCancel: () => cancelGoogleRef.current?.(),
+    onDemo: chooseDemoData,
+    onDismiss: () => sendEvent("gmail_closed"),
+  } as const;
+
   // ---- call lifecycle ------------------------------------------------
 
   useEffect(() => {
@@ -278,6 +366,8 @@ export default function Onboarding() {
     setCallback(false);
     setCallNote(null);
     setMuted(false);
+    setMicProblem(null);
+    setMicLevel(0);
     if (!config.voice || !sessionId) {
       void sendEvent("call_connected"); // typed call
       return;
@@ -293,6 +383,9 @@ export default function Onboarding() {
           if (!speaking && endAfterSpeechRef.current) void finishVoice();
         },
         onUserSpeaking: setUserSpeaking,
+        onMicLevel: setMicLevel,
+        onMicName: setMicName,
+        onMicProblem: setMicProblem,
         onDropped: () => {
           if (!voiceRef.current) return;
           voiceRef.current = null;
@@ -334,6 +427,14 @@ export default function Onboarding() {
           {session?.agent_name_defaulted && <span className="muted small">(default name)</span>}
         </div>
         <div className="topbar-actions">
+          {session?.gmail_status === "connected" && (
+            <span className="pill">
+              {session.gmail_demo ? "Demo data" : "Gmail connected"}
+              <button className="link" onClick={() => sendEvent("gmail_disconnected")}>
+                Disconnect
+              </button>
+            </span>
+          )}
           <button className="ghost small" onClick={() => setDebug((d) => !d)} aria-pressed={debug}>
             {debug ? "Hide" : "Show"} state
           </button>
@@ -406,11 +507,7 @@ export default function Onboarding() {
             )}
 
             {gmailCard && callView === "none" && (
-              <GmailCard
-                stub={config.gmail_stub}
-                onConnect={() => { setGmailPopup(true); void sendEvent("gmail_popup_opened"); }}
-                onDismiss={() => sendEvent("gmail_closed")}
-              />
+              <GmailCard {...gmailCardProps} />
             )}
           </div>
 
@@ -437,6 +534,16 @@ export default function Onboarding() {
           onHangUp={hangUp}
           onSay={sendMessage}
           voice={voiceLive}
+          micLevel={micLevel}
+          micName={micName}
+          micProblem={micProblem}
+          onTypeInstead={async () => {
+            // Keep the call going, just typed: drop the audio connection but not the call.
+            await finishVoice();
+            setCallView("live");
+            setMicProblem(null);
+            setCallNote("Typing instead of talking. The call is still on.");
+          }}
           botSpeaking={botSpeaking}
           userSpeaking={userSpeaking}
           muted={muted}
@@ -445,12 +552,7 @@ export default function Onboarding() {
           onReady={session?.wrapping_up && !graduated ? () => sendEvent("graduate") : undefined}
           gmail={
             gmailCard ? (
-              <GmailCard
-                stub={config.gmail_stub}
-                compact
-                onConnect={() => { setGmailPopup(true); void sendEvent("gmail_popup_opened"); }}
-                onDismiss={() => sendEvent("gmail_closed")}
-              />
+              <GmailCard {...gmailCardProps} compact />
             ) : null
           }
         />
@@ -545,14 +647,22 @@ function Composer({ onSend, placeholder, disabled }: { onSend: (t: string) => vo
 }
 
 function GmailCard({
-  stub,
+  mode,
+  demo,
+  waiting,
   compact,
   onConnect,
+  onCancel,
+  onDemo,
   onDismiss,
 }: {
-  stub: boolean;
+  mode: "google" | "stub";
+  demo: boolean;
+  waiting: boolean;
   compact?: boolean;
   onConnect: () => void;
+  onCancel: () => void;
+  onDemo: () => void;
   onDismiss: () => void;
 }) {
   return (
@@ -560,18 +670,38 @@ function GmailCard({
       <div>
         <strong>Connect Gmail</strong>
         <p className="muted small">
-          Read-only. I&apos;ll look at upcoming calendar events and recent email subject lines. I never send anything or
-          change your calendar, and you can disconnect anytime.
+          Read-only: upcoming calendar events and email subject lines, never the emails themselves. Nothing gets
+          sent or changed, and you can disconnect anytime.
         </p>
+        {mode === "google" && !waiting && (
+          <p className="muted small">
+            This is a test app, so Google will show a warning: tap <strong>Advanced</strong>, then{" "}
+            <strong>Go to Persona</strong>.
+          </p>
+        )}
       </div>
-      <div className="row">
-        <button className="primary" onClick={onConnect} disabled={!stub} title={stub ? "" : "Google sign-in arrives in Phase 3"}>
-          Connect Gmail
+      {waiting ? (
+        <div className="row">
+          <span className="muted small">Waiting for Google sign-in in the other window…</span>
+          <button className="ghost" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div className="row">
+          <button className="primary" onClick={onConnect}>
+            Connect Gmail
+          </button>
+          <button className="ghost" onClick={onDismiss}>
+            Not now
+          </button>
+        </div>
+      )}
+      {demo && mode === "google" && (
+        <button className="link small" onClick={onDemo}>
+          Can&apos;t sign in? Use demo data instead
         </button>
-        <button className="ghost" onClick={onDismiss}>
-          Not now
-        </button>
-      </div>
+      )}
     </div>
   );
 }
@@ -617,6 +747,10 @@ function CallScreen({
   onHangUp,
   onSay,
   voice,
+  micLevel,
+  micName,
+  micProblem,
+  onTypeInstead,
   botSpeaking,
   userSpeaking,
   muted,
@@ -635,6 +769,10 @@ function CallScreen({
   onHangUp: () => void;
   onSay: (t: string) => void;
   voice: boolean;
+  micLevel: number;
+  micName: string | null;
+  micProblem: string | null;
+  onTypeInstead: () => void;
   botSpeaking: boolean;
   userSpeaking: boolean;
   muted: boolean;
@@ -690,9 +828,30 @@ function CallScreen({
             </div>
             {gmail}
             {voice ? (
-              <button className="secondary wide" onClick={onMute} aria-pressed={muted}>
-                {muted ? "Unmute" : "Mute"}
-              </button>
+              <>
+                <div className="mic" aria-label="Microphone level">
+                  <div className="mic-bar">
+                    <div className="mic-fill" style={{ width: `${Math.min(100, Math.round(micLevel * 250))}%` }} />
+                  </div>
+                  <span className="small muted">{micName ?? "microphone"}</span>
+                </div>
+                {micProblem && (
+                  <div className="banner error mic-help" role="alert">
+                    <strong>{micProblem}</strong>
+                    <ol>
+                      <li>Click the icon left of the address bar → Microphone → Allow, then reload.</li>
+                      <li>Mac: System Settings → Privacy &amp; Security → Microphone → turn on Chrome.</li>
+                      <li>Wrong mic? chrome://settings/content/microphone → pick the right one.</li>
+                    </ol>
+                    <button className="secondary" onClick={onTypeInstead}>
+                      Continue by typing
+                    </button>
+                  </div>
+                )}
+                <button className="secondary wide" onClick={onMute} aria-pressed={muted}>
+                  {muted ? "Unmute" : "Mute"}
+                </button>
+              </>
             ) : (
               <>
                 {note && <p className="stub-label">{note}</p>}

@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import validation as v
+from .google import describe_snapshot
 from .state import DEFAULT_AGENT_NAME, OnboardingState, Turn
 
 GRADUATION_COOLDOWN_TURNS = 3
@@ -342,9 +343,11 @@ def _priority(state: OnboardingState) -> list[str]:
 
     if s.gmail_status == "connected" and s.help_topic and not s.value_moment_done:
         lines.append(
-            "Value moment: give one specific, useful suggestion tied to what they need help with, and offer "
-            "(don't do) one concrete next action. Gmail data isn't wired up yet, so base it on what they told you "
-            "and don't invent calendar events or emails."
+            "Value moment: from the account snapshot below, pick the ONE item most relevant to what they need "
+            "help with and offer (don't do) one concrete next action, like drafting a reply or setting a reminder. "
+            "Mention it the way a friend would ('I see you've got the dentist Thursday'), never read a subject "
+            "line out word for word, and never mention anything private. If nothing fits or the snapshot is "
+            "empty, base it on what they told you instead. Never invent events or emails."
         )
         if not s.user_name and s.google_name:
             lines.append(
@@ -454,6 +457,10 @@ def directors_note(state: OnboardingState, *, channel: str, user_text: str = "")
     if s.sentiment in ("rushed", "frustrated") or s.short_answer_streak >= 2:
         length = "One sentence."
 
+    snapshot = ""
+    if s.gmail_status == "connected" and s.account_snapshot and (value_moment_due(s) or s.wrapping_up):
+        snapshot = "Account snapshot (read-only):\n" + describe_snapshot(s.account_snapshot)
+
     lines = [
         f"Channel: {channel} ({call})",
         f"Filled: {filled}",
@@ -462,6 +469,7 @@ def directors_note(state: OnboardingState, *, channel: str, user_text: str = "")
         f"Signals: {'; '.join(signals) if signals else 'none'}",
         f"Graduation: {grad}",
         "Priority: " + " ".join(_priority(s)),
+        *([snapshot] if snapshot else []),
         length,
     ]
     return "<director_note>\n" + "\n".join(lines) + "\n</director_note>"

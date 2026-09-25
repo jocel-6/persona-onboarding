@@ -22,6 +22,8 @@ export type SessionState = {
   agent_name_defaulted: boolean;
   gmail_status: "not_connected" | "popup_open" | "connected" | "denied" | "error";
   gmail_card_shown: boolean;
+  gmail_demo: boolean;
+  google_result: string | null;
   channel: Channel;
   call_status: CallStatus;
   sentiment: string;
@@ -70,10 +72,17 @@ export type EventType =
   | "gmail_connected"
   | "gmail_closed"
   | "gmail_denied"
+  | "gmail_disconnected"
   | "graduate"
   | "resumed";
 
-export type Config = { gmail_stub: boolean; voice?: boolean; voice_problem?: string | null };
+export type Config = {
+  gmail_stub: boolean;
+  gmail_mode?: "google" | "stub";
+  demo_data?: boolean;
+  voice?: boolean;
+  voice_problem?: string | null;
+};
 
 export async function createSession(): Promise<{ state: SessionState; ui: UiEvent[]; config: Config }> {
   const r = await fetch(`${API_URL}/api/sessions`, { method: "POST" });

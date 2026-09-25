@@ -6,6 +6,7 @@
   POST   /api/sessions/{id}/events      app event (call, hangup, Gmail, resume) -> SSE stream
   DELETE /api/sessions/{id}             forget the session
   POST   /api/offer, PATCH /api/offer   WebRTC signaling for the voice call
+  GET    /api/google/start, /callback   Google sign-in popup (read-only calendar + email headers)
 
 Stream events: {"type": "delta", "text"} while the agent talks, {"type": "ui", "ui": {...}}
 for screen changes, then {"type": "state", "state"} and {"type": "end"}. During a
@@ -15,22 +16,39 @@ voice call the same messages arrive over the WebRTC data channel instead.
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import logging
 import random
+import time
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import runtime
+from . import google, runtime
 from .events import EventType, apply_event
 from .state import OnboardingState, Turn
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+_db = runtime.settings.db_path
+LOG_FILE = (Path(_db).parent if _db != ":memory:" else Path(__file__).resolve().parent.parent / "data") / "server.log"
+LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    handlers=[logging.StreamHandler(), logging.FileHandler(LOG_FILE)],
+    force=True,
+)
+try:  # Pipecat logs through loguru; keep a copy next to ours for debugging calls.
+    from loguru import logger as _loguru
+
+    _loguru.add(str(LOG_FILE), level="DEBUG", rotation="20 MB", retention=3, enqueue=True)
+except ImportError:
+    pass
 log = logging.getLogger("persona.api")
 
 settings = runtime.settings
@@ -84,7 +102,20 @@ def _sse_response(gen: AsyncIterator[str]) -> StreamingResponse:
 
 def _config() -> dict[str, Any]:
     problem = settings.voice_problem()
-    return {"gmail_stub": settings.gmail_stub, "voice": problem is None, "voice_problem": problem}
+    return {
+        "gmail_stub": settings.gmail_stub,
+        "gmail_mode": "stub" if settings.gmail_stub else "google",
+        "demo_data": settings.allow_demo_data,
+        "voice": problem is None,
+        "voice_problem": problem,
+    }
+
+
+async def _revoke_google(session_id: str) -> None:
+    tokens = store.get_tokens(session_id)
+    if tokens:
+        await google.revoke(tokens.get("refresh_token") or tokens.get("access_token", ""))
+        store.delete_tokens(session_id)
 
 
 async def _stream_turn(
@@ -152,6 +183,7 @@ async def delete_session(session_id: str) -> dict[str, bool]:
     from .voice.call import end_call
 
     await end_call(session_id)
+    await _revoke_google(session_id)  # tokens are deleted when the session ends
     store.delete(session_id)
     return {"ok": True}
 
@@ -165,6 +197,8 @@ async def post_message(session_id: str, body: MessageIn) -> StreamingResponse:
 @app.post("/api/sessions/{session_id}/events")
 async def post_event(session_id: str, body: EventIn) -> StreamingResponse:
     _load(session_id)
+    if body.type == "gmail_disconnected":
+        await _revoke_google(session_id)
     if body.type == "hangup":
         # Stop the audio pipeline first so a half-spoken turn can't race the text follow-up.
         from .voice.call import end_call
@@ -233,3 +267,89 @@ async def webrtc_ice(request: Request) -> dict[str, bool]:
     )
     await _handler().handle_patch_request(patch)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Google sign-in (popup). Only this callback can mark Gmail as connected.
+# ---------------------------------------------------------------------------
+
+OAUTH_STATE_TTL = 600
+_oauth_states: dict[str, tuple[str, float]] = {}
+
+
+def _popup_result(payload: dict[str, Any]) -> HTMLResponse:
+    """Tiny page that tells the app how sign-in went, then closes itself."""
+    data = json.dumps({"source": "persona-google", **payload})
+    origin = json.dumps(settings.frontend_origin)
+    msg = "Connected! You can close this window." if payload.get("ok") else "Not connected. You can close this window."
+    return HTMLResponse(
+        f"""<!doctype html><meta charset="utf-8"><title>Persona</title>
+<body style="font:16px system-ui;padding:32px">{html.escape(msg)}
+<script>try{{window.opener&&window.opener.postMessage({data},{origin})}}catch(e){{}}setTimeout(()=>window.close(),300)</script>"""
+    )
+
+
+@app.get("/api/google/start")
+async def google_start(session_id: str):
+    if settings.gmail_stub:
+        raise HTTPException(400, "Google sign-in isn't configured (GMAIL_STUB mode)")
+    _load(session_id)
+    now = time.time()
+    for k, (_, t) in list(_oauth_states.items()):
+        if now - t > OAUTH_STATE_TTL:
+            _oauth_states.pop(k, None)
+    token = google.new_state_token()
+    _oauth_states[token] = (session_id, now)
+    return RedirectResponse(google.auth_url(settings.google_client_id, settings.google_redirect_uri, token))
+
+
+async def _record_google_result(session_id: str, result: str) -> None:
+    async with runtime.locks[session_id]:
+        st = store.get(session_id)
+        if st is not None:
+            st.google_result = result
+            store.save(st)
+
+
+@app.get("/api/google/callback")
+async def google_callback(state: str = "", code: str = "", error: str = ""):
+    entry = _oauth_states.pop(state, None)
+    if entry is None or time.time() - entry[1] > OAUTH_STATE_TTL:
+        return _popup_result({"ok": False, "reason": "expired"})
+    session_id = entry[0]
+    if error:
+        reason = "denied" if error == "access_denied" else "error"
+        await _record_google_result(session_id, reason)
+        return _popup_result({"ok": False, "reason": reason})
+    try:
+        tokens = await google.exchange_code(
+            settings.google_client_id, settings.google_client_secret, settings.google_redirect_uri, code
+        )
+        if google.granted_all_scopes(tokens):
+            await google.revoke(tokens.get("access_token", ""))
+            await _record_google_result(session_id, "missing_scopes")
+            return _popup_result({"ok": False, "reason": "missing_scopes"})
+        profile = await google.fetch_profile(tokens["access_token"])
+        snapshot = await google.fetch_snapshot(tokens["access_token"])
+    except Exception:  # noqa: BLE001 - any failure here just means "not connected"; never surface details
+        log.exception("Google sign-in failed for session %s", session_id[:8])
+        await _record_google_result(session_id, "error")
+        return _popup_result({"ok": False, "reason": "error"})
+
+    store.save_tokens(session_id, tokens)
+    async with runtime.locks[session_id]:
+        st = store.get(session_id)
+        if st is None:
+            return _popup_result({"ok": False, "reason": "expired"})
+        st.gmail = profile.get("email") or "connected"
+        st.google_name = (profile.get("given_name") or profile.get("name", "").split(" ")[0]) or None
+        st.account_snapshot = snapshot
+        st.gmail_demo = False
+        st.gmail_status = "connected"
+        st.google_result = "ok"
+        store.save(st)
+    log.info(
+        "Google connected for session %s: %d events, %d subjects",
+        session_id[:8], len(snapshot["events"]), len(snapshot["emails"]),
+    )
+    return _popup_result({"ok": True})

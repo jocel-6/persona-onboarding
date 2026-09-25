@@ -511,3 +511,54 @@ button.starter:hover {
 .avatar.listening {
   box-shadow: 0 0 0 6px color-mix(in srgb, var(--good) 45%, transparent);
 }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 3px 4px 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--good) 14%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--good) 35%, var(--border));
+}
+button.link {
+  background: none;
+  border: 0;
+  padding: 2px 6px;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+  align-self: flex-start;
+}
+button.link:hover {
+  color: var(--text);
+}
+
+.mic {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mic-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.mic-fill {
+  height: 100%;
+  background: var(--good);
+  transition: width 80ms linear;
+}
+.mic-help {
+  text-align: left;
+  width: 100%;
+}
+.mic-help ol {
+  margin: 6px 0 8px;
+  padding-left: 18px;
+  font-size: 13px;
+}

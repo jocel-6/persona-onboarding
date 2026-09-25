@@ -44,6 +44,13 @@ class OnboardingState(BaseModel):
 
     gmail_status: GmailStatus = "not_connected"
     google_name: str | None = None  # from Google sign-in; confirmed with the user before it becomes user_name
+    gmail_demo: bool = False
+    # How the last Google sign-in popup ended: ok | denied | missing_scopes | error | expired.
+    # The browser polls this, since Google's pages can cut the popup's link back to the app.
+    google_result: str | None = None  # connected to the clearly labeled demo data, not a real account
+    # Read-only snapshot fetched once at connect: upcoming events + inbox subjects,
+    # private items already removed. Server-side only (never sent to the browser).
+    account_snapshot: dict[str, Any] | None = None
     gmail_card_shown: bool = False
     gmail_offer_count: int = 0
 
@@ -91,4 +98,4 @@ class OnboardingState(BaseModel):
 
     def public_view(self) -> dict[str, Any]:
         """What the browser is allowed to see: no raw API history, no tokens."""
-        return self.model_dump(exclude={"messages", "pending_tool_results"})
+        return self.model_dump(exclude={"messages", "pending_tool_results", "account_snapshot"})

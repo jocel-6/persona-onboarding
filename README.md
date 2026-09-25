@@ -10,7 +10,9 @@ An adaptive voice + text onboarding agent. In the first five minutes it learns f
 - **An eval harness with simulated adversarial users** (rushed exec, rambler, privacy skeptic, jailbreaker, …) graded by code and by Claude Opus 5, under a hard spend cap. It found and drove most of the fixes in [the engineering log](docs/ARCHITECTURE.md#engineering-log-real-bugs-found-and-how).
 - **Measured, not guessed:** ~1.0 s from end of your turn to the agent's voice (Haiku 4.5), every turn logged.
 
-Docs: [Architecture and decisions](docs/ARCHITECTURE.md) · [Connecting real Gmail](docs/google-setup.md) · the two plan PDFs in the repo root.
+**Live demo:** _link after deploying ([docs/DEPLOY.md](docs/DEPLOY.md))_ · **Video:** _2–3 min walkthrough ([script](docs/DEMO_SCRIPT.md))_
+
+Docs: [Architecture and decisions](docs/ARCHITECTURE.md) · [Connecting real Gmail](docs/google-setup.md) · [Deploying](docs/DEPLOY.md) · the two plan PDFs in the repo root.
 
 ## Run it locally
 
@@ -22,6 +24,8 @@ cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cd frontend && npm install && cd ..
 ./dev.sh                        # backend :8000, frontend :3000
 ```
+
+Or run the backend in Docker: `docker build -t persona-backend backend && docker run --env-file .env -p 8000:8000 persona-backend`.
 
 Open http://localhost:3000. "Show state" in the top bar shows the slot table, signals, and per-turn latency. "Start over" resets the session.
 

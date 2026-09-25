@@ -95,7 +95,7 @@ browser mic ──WebRTC──▶ Deepgram STT ─▶ confidence tagger ─▶ u
 - **Fallback:** no voice keys, or mic blocked → the call screen takes typed input instead, so the flow never breaks.
 
 ### Voice bake-off
-Voice is picked with data (`backend/scripts/voices.py`): `list` shows real voices per provider; `render provider:voice …` has each read 8 test lines (greeting, question, empathy, excitement, dates/times, unusual names, a long sentence, "Got it.") and measures time to first audio; `listen.html` is a blind listening page for 3–5 friends; `score` merges their ratings into the table below. Round 1 so far: Cartesia Parker, Skylar, Corey and Cathy rendered (time to first audio 145–267 ms); ElevenLabs pending. *(Scorecard goes here after the blind listening round.)*
+Voice is picked with data (`backend/scripts/voices.py`): `list` shows real voices per provider; `render provider:voice …` has each read 8 test lines (greeting, question, empathy, excitement, dates/times, unusual names, a long sentence, "Got it.") and measures time to first audio; `listen.html` is a blind listening page for 3–5 friends; `score` merges their ratings into the table below. Round 1: Cartesia Parker, Skylar, Corey and Cathy rendered (time to first audio 145–267 ms) and compared blind; **Corey** ("inviting, cheerful, casual") was picked, and is also the fastest to start speaking (145 ms). Next: a blind round with 3–5 listeners and an ElevenLabs comparison. *(Scorecard goes here.)*
 
 ## Gmail and the value moment (Phase 3)
 

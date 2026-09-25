@@ -5,6 +5,7 @@
   POST   /api/sessions/{id}/messages    user typed something -> SSE stream
   POST   /api/sessions/{id}/events      app event (call, hangup, Gmail, resume) -> SSE stream
   DELETE /api/sessions/{id}             forget the session
+  POST   /api/sessions/{id}/fields      fix a field from the recap (validated, no model call)
   POST   /api/offer, PATCH /api/offer   WebRTC signaling for the voice call
   GET    /api/google/start, /callback   Google sign-in popup (read-only calendar + email headers)
 
@@ -76,6 +77,11 @@ SPOKEN_DURING_CALL = {"gmail_connected", "gmail_closed", "gmail_denied", "gmail_
 
 class MessageIn(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
+
+
+class FieldEditIn(BaseModel):
+    field: str
+    value: str = Field(min_length=1, max_length=240)
 
 
 class EventIn(BaseModel):
@@ -186,6 +192,19 @@ async def delete_session(session_id: str) -> dict[str, bool]:
     await _revoke_google(session_id)  # tokens are deleted when the session ends
     store.delete(session_id)
     return {"ok": True}
+
+
+@app.post("/api/sessions/{session_id}/fields")
+async def edit_field(session_id: str, body: FieldEditIn) -> dict[str, Any]:
+    from . import orchestrator as orch
+
+    async with runtime.locks[session_id]:
+        state = _load(session_id)
+        error = orch.edit_field(state, body.field, body.value)
+        if error:
+            raise HTTPException(422, error)
+        store.save(state)
+        return {"state": state.public_view()}
 
 
 @app.post("/api/sessions/{session_id}/messages")

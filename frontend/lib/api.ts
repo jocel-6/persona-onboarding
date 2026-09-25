@@ -97,6 +97,20 @@ export async function getSession(id: string): Promise<{ state: SessionState; con
   return r.json();
 }
 
+export type EditableField = "agent_name" | "user_name" | "help_topic";
+
+/** Fix a field from the recap. Resolves to the new state, or throws with a friendly message. */
+export async function editField(id: string, field: EditableField, value: string): Promise<SessionState> {
+  const r = await fetch(`${API_URL}/api/sessions/${id}/fields`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ field, value }),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Couldn't save that.");
+  return body.state as SessionState;
+}
+
 export async function deleteSession(id: string): Promise<void> {
   await fetch(`${API_URL}/api/sessions/${id}`, { method: "DELETE" });
 }

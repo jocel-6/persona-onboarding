@@ -214,6 +214,37 @@ def apply_tool_call(state: OnboardingState, args: dict[str, Any]) -> ApplyResult
     return res
 
 
+EDITABLE_FIELDS = {"agent_name": "agent name", "user_name": "name", "help_topic": "what they need help with"}
+
+
+def edit_field(state: OnboardingState, field_name: str, raw: str) -> str | None:
+    """Apply an edit from the recap. Returns an error message, or None on success."""
+    checks = {"user_name": v.check_person_name, "agent_name": v.check_agent_name, "help_topic": v.check_help_topic}
+    if field_name not in checks:
+        return "That can't be edited here."
+    value, reason = checks[field_name](raw)
+    if value is None:
+        return {
+            "user_name": "That doesn't look like a name. Just the name, please.",
+            "agent_name": "That doesn't look like a name. Just the name, please.",
+        }.get(field_name, "Could you say that a bit more specifically?")
+    old = getattr(state, field_name)
+    if old == value:
+        return None
+    setattr(state, field_name, value)
+    if field_name == "agent_name":
+        state.agent_name_defaulted = False
+    if old and field_name not in state.corrected:
+        state.corrected.append(field_name)
+    label = EDITABLE_FIELDS[field_name]
+    add_event_turn(state, f"Updated {label}: {value}")
+    state.pending_notes.append(
+        f"the user edited their {label} in the recap: {old!r} -> {value!r}. Use the new value; "
+        "don't make a thing of it."
+    )
+    return None
+
+
 def graduate(state: OnboardingState, res: ApplyResult | None = None) -> None:
     if state.graduated:
         return

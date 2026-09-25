@@ -124,6 +124,10 @@ class Brain:
         else:
             body = f"[event: {event_text}]"
 
+        if state.pending_notes:
+            body = "\n".join(f"[event: {n}]" for n in state.pending_notes) + "\n" + body
+            state.pending_notes = []
+
         value_moment_due = orch.value_moment_due(state)
         note = orch.directors_note(state, channel=channel, user_text=user_text or "")
 

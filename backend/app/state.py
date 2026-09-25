@@ -84,6 +84,9 @@ class OnboardingState(BaseModel):
 
     # tool_result blocks owed to the model, sent at the start of the next user message.
     pending_tool_results: list[dict[str, Any]] = Field(default_factory=list)
+    # Things that happened outside the conversation (e.g. an edit in the recap) that the
+    # model should hear about on its next turn.
+    pending_notes: list[str] = Field(default_factory=list)
 
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
@@ -98,4 +101,4 @@ class OnboardingState(BaseModel):
 
     def public_view(self) -> dict[str, Any]:
         """What the browser is allowed to see: no raw API history, no tokens."""
-        return self.model_dump(exclude={"messages", "pending_tool_results", "account_snapshot"})
+        return self.model_dump(exclude={"messages", "pending_tool_results", "pending_notes", "account_snapshot"})

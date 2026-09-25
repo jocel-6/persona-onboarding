@@ -2,7 +2,7 @@
 
 An adaptive voice + text onboarding agent. It learns four things (what to call the agent, what to call you, a connected Gmail, and what you need help with) through a conversation that feels like the first five minutes of using Persona, not a form.
 
-> Status: **Phases 0–2 built** (text brain, real voice calls, Gmail stub). Real Google sign-in (Phase 3), recap (Phase 4) and the eval harness (Phase 5) are next. See `Persona_Onboarding_Project_Plan.pdf` and `Persona_Onboarding_Technical_Design.pdf`.
+> Status: **Phases 0–4 built**: text brain, real voice calls, real Gmail sign-in (needs Google credentials, see [docs/google-setup.md](docs/google-setup.md); demo data otherwise), and the recap. The eval harness (Phase 5) is next. See `Persona_Onboarding_Project_Plan.pdf` and `Persona_Onboarding_Technical_Design.pdf`.
 
 ## Run it locally
 
@@ -79,9 +79,25 @@ browser mic ──WebRTC──▶ Deepgram STT ─▶ confidence tagger ─▶ u
 ### Voice bake-off
 Voice is picked with data (`backend/scripts/voices.py`): `list` shows real voices per provider; `render provider:voice …` has each read 8 test lines (greeting, question, empathy, excitement, dates/times, unusual names, a long sentence, "Got it.") and measures time to first audio; `listen.html` is a blind listening page for 3–5 friends; `score` merges their ratings into the table below. Round 1 so far: Cartesia Parker, Skylar, Corey and Cathy rendered (time to first audio 145–267 ms); ElevenLabs pending. *(Scorecard goes here after the blind listening round.)*
 
+## Gmail and the value moment (Phase 3)
+
+The user signs in with Google in a popup, mid-call if they like, while the conversation keeps going. The agent then mentions one real thing ("I see you've got the dentist Thursday") tied to what they need help with, and offers one concrete action. It only offers; nothing happens without a yes.
+
+- **Scopes, as small as possible:** sign-in, `calendar.events.readonly`, and `gmail.metadata`. The Gmail scope reads headers (subject, sender) and **cannot open email bodies at all**, so "we never read your email" is enforced by Google, not just promised.
+- **What's read:** once, right after connecting: the next ~10 events (3 weeks out) and ~20 recent inbox subject lines. Anything that looks medical, financial, or otherwise private (lab results, bank statements, verification codes, …) is filtered out in code before the model sees it (`backend/app/google.py`).
+- **Where tokens live:** a server-side table only, never in session state, the browser, or the model. **Disconnect** (top bar or recap) revokes the token with Google and deletes it; resetting the session does the same.
+- **Only the server can say "connected":** the OAuth callback records the result; the browser can't claim a connection. Google's pages can cut the popup's link back to the app, so the app polls for the result instead of relying on the popup.
+- **Failure cases:** closed popup or denied access (no guilt, offered once more later), unticked permissions (treated as not connected, said plainly), account not on the test list (explained, with demo data or skipping offered), empty calendar (value moment falls back to what they said), API errors (retried once, then skipped silently).
+- **Testing mode:** Google only lets listed test users sign in until the app is verified (which takes weeks). Setup and test users: [docs/google-setup.md](docs/google-setup.md).
+- **Demo data:** "Can't sign in? Use demo data" connects a clearly labeled sample calendar and inbox, and the agent says it's demo data when it uses it. Off unless the user picks it.
+
+## Recap (Phase 4)
+
+After a call ends, and at graduation, a card shows what the agent got: its own name, the user's name, what they need help with, Gmail status, and what it'll do first. Missing items say so plainly ("Not yet. I'll ask."). Every item has **Edit**: fixes go through the same validation as everything else (no model call), show up in the chat, and the agent hears about them on its next turn. The "You're in" screen reuses the same rows plus tappable starter suggestions.
+
 ### What's simulated (and why)
 - **The phone call** runs in the browser over WebRTC rather than a real phone number: no telephony vendor or number setup for reviewers, and the Gmail card can appear on screen mid-call.
-- **Google sign-in** is a clearly labeled dev stub (`GMAIL_STUB=1`) until Phase 3.
+- **Google sign-in** falls back to a clearly labeled stand-in until `GOOGLE_CLIENT_ID`/`SECRET` are set.
 
 ### Storage
 SQLite (`backend/data/sessions.db`), one JSON state document per session. It survives server restarts and page refreshes ("Welcome back…"). The raw model history never leaves the server.

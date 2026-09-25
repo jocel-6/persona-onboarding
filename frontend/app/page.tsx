@@ -5,9 +5,11 @@ import {
   API_URL,
   createSession,
   deleteSession,
+  editField,
   getSession,
   streamPost,
   type Config,
+  type EditableField,
   type EventType,
   type SessionState,
   type StreamEvent,
@@ -43,6 +45,7 @@ export default function Onboarding() {
   const cancelGoogleRef = useRef<(() => void) | null>(null);
   const [callView, setCallView] = useState<CallView>("none");
   const [doneDismissed, setDoneDismissed] = useState(false);
+  const [recapDismissed, setRecapDismissed] = useState(false);
   const [debug, setDebug] = useState(false);
   const [latency, setLatency] = useState<{ ttft_ms: number | null; total_ms: number } | null>(null);
 
@@ -267,6 +270,7 @@ export default function Onboarding() {
     setGmailCard(false);
     setCallView("none");
     setDoneDismissed(false);
+    setRecapDismissed(false);
     setLatency(null);
     await boot(true);
   };
@@ -362,6 +366,7 @@ export default function Onboarding() {
   }, [callView, sendEvent]);
 
   const answer = async () => {
+    setRecapDismissed(false);
     setCallView("live");
     setCallback(false);
     setCallNote(null);
@@ -506,6 +511,16 @@ export default function Onboarding() {
               </div>
             )}
 
+            {session && showRecap(session) && !graduated && !recapDismissed && callView === "none" && (
+              <RecapCard
+                s={session}
+                onSaved={applyState}
+                onConnectGmail={() => setGmailCard(true)}
+                onDisconnectGmail={() => sendEvent("gmail_disconnected")}
+                onDismiss={() => setRecapDismissed(true)}
+              />
+            )}
+
             {gmailCard && callView === "none" && (
               <GmailCard {...gmailCardProps} />
             )}
@@ -568,6 +583,9 @@ export default function Onboarding() {
       {graduated && !doneDismissed && callView === "none" && session && (
         <DonePanel
           s={session}
+          onSaved={applyState}
+          onConnectGmail={() => { setDoneDismissed(true); setGmailCard(true); }}
+          onDisconnectGmail={() => sendEvent("gmail_disconnected")}
           onClose={() => setDoneDismissed(true)}
           onStart={(text) => { setDoneDismissed(true); void sendMessage(text); }}
         />
@@ -873,21 +891,142 @@ function CallScreen({
   );
 }
 
-function DonePanel({ s, onClose, onStart }: { s: SessionState; onClose: () => void; onStart: (text: string) => void }) {
+/** Show the recap once a call has ended (it's the "post-call text"), and at graduation. */
+function showRecap(s: SessionState): boolean {
+  const talkedOnCall = s.transcript.some((t) => t.role === "user" && t.channel === "voice");
+  return s.graduated || (talkedOnCall && ["hung_up", "completed", "missed"].includes(s.call_status));
+}
+
+type RecapProps = {
+  s: SessionState;
+  onSaved: (s: SessionState) => void;
+  onConnectGmail: () => void;
+  onDisconnectGmail: () => void;
+};
+
+function RecapRows({ s, onSaved, onConnectGmail, onDisconnectGmail }: RecapProps) {
+  const firstUp =
+    s.starter_suggestions[0] ?? (s.help_topic ? `Start on: ${s.help_topic}` : null);
+  return (
+    <dl className="recap">
+      <EditableRow s={s} field="agent_name" label="My name" value={s.agent_name}
+        hint={s.agent_name_defaulted ? "default; rename me anytime" : undefined} onSaved={onSaved} />
+      <EditableRow s={s} field="user_name" label="Your name" value={s.user_name}
+        missing="Not yet. I'll ask." onSaved={onSaved} />
+      <EditableRow s={s} field="help_topic" label="Helping with" value={s.help_topic}
+        missing="Not yet. Tell me whenever." onSaved={onSaved} />
+      <dt>Gmail</dt>
+      <dd>
+        {s.gmail_status === "connected" ? (
+          <>
+            <span>{s.gmail_demo ? "Demo data" : s.gmail}</span>
+            <button className="link small" onClick={onDisconnectGmail}>Disconnect</button>
+          </>
+        ) : (
+          <>
+            <span className="muted">Not connected</span>
+            <button className="link small" onClick={onConnectGmail}>Connect</button>
+          </>
+        )}
+      </dd>
+      {firstUp && (
+        <>
+          <dt>First up</dt>
+          <dd>{firstUp}</dd>
+        </>
+      )}
+    </dl>
+  );
+}
+
+function EditableRow({
+  s,
+  field,
+  label,
+  value,
+  hint,
+  missing,
+  onSaved,
+}: {
+  s: SessionState;
+  field: EditableField;
+  label: string;
+  value: string | null;
+  hint?: string;
+  missing?: string;
+  onSaved: (s: SessionState) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      onSaved(await editField(s.session_id, field, draft));
+      setEditing(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save that.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd>
+        {editing ? (
+          <form className="edit-row" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+            <input value={draft} onChange={(e) => setDraft(e.target.value)} aria-label={label} autoFocus />
+            <button className="primary small" type="submit" disabled={saving || !draft.trim()}>Save</button>
+            <button className="link small" type="button" onClick={() => { setEditing(false); setError(null); }}>
+              Cancel
+            </button>
+            {error && <span className="small error-text">{error}</span>}
+          </form>
+        ) : (
+          <>
+            {value ? <span>{value}</span> : <span className="muted">{missing}</span>}
+            {hint && <span className="muted small"> ({hint})</span>}
+            <button className="link small" onClick={() => { setDraft(value ?? ""); setEditing(true); }}>
+              {value ? "Edit" : "Add"}
+            </button>
+          </>
+        )}
+      </dd>
+    </>
+  );
+}
+
+function RecapCard(props: RecapProps & { onDismiss: () => void }) {
+  return (
+    <div className="card">
+      <strong>Here&apos;s what I&apos;ve got</strong>
+      <p className="muted small">Anything off? Tap to fix it.</p>
+      <RecapRows {...props} />
+      <div className="row end">
+        <button className="ghost small" onClick={props.onDismiss}>Looks right</button>
+      </div>
+    </div>
+  );
+}
+
+function DonePanel({
+  onClose,
+  onStart,
+  ...props
+}: RecapProps & { onClose: () => void; onStart: (text: string) => void }) {
+  const s = props.s;
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="You're in">
       <div className="modal done">
         <h2>You&apos;re in.</h2>
-        <p className="muted">{s.agent_name} is ready. Here&apos;s what it knows so far:</p>
-        <dl>
-          <dt>Your name</dt>
-          <dd>{s.user_name ?? <span className="muted">Not yet. It&apos;ll ask later.</span>}</dd>
-          <dt>Needs help with</dt>
-          <dd>{s.help_topic ?? <span className="muted">Not yet</span>}</dd>
-          <dt>Gmail</dt>
-          <dd>{s.gmail_status === "connected" ? s.gmail : <span className="muted">Not connected. You can connect it anytime.</span>}</dd>
-        </dl>
-        {s.starter_suggestions.length > 0 ? (
+        <p className="muted">{s.agent_name} is ready. Here&apos;s what it knows so far; tap anything to fix it.</p>
+        <RecapRows {...props} />
+        {s.starter_suggestions.length > 0 && (
           <>
             <p className="small muted">Try one of these first:</p>
             <div className="starters">
@@ -898,12 +1037,6 @@ function DonePanel({ s, onClose, onStart }: { s: SessionState; onClose: () => vo
               ))}
             </div>
           </>
-        ) : (
-          s.help_topic && (
-            <p>
-              <strong>First up:</strong> {s.help_topic}
-            </p>
-          )
         )}
         <div className="row end">
           <button className={s.starter_suggestions.length ? "ghost" : "primary"} onClick={onClose}>

@@ -562,3 +562,43 @@ button.link:hover {
   padding-left: 18px;
   font-size: 13px;
 }
+
+.recap {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 4px 0;
+  align-items: baseline;
+}
+.recap dt {
+  color: var(--muted);
+  font-size: 14px;
+}
+.recap dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+}
+.edit-row input {
+  flex: 1;
+  min-width: 140px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.error-text {
+  color: var(--bad);
+  width: 100%;
+}

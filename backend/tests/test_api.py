@@ -58,3 +58,21 @@ def test_full_flow_over_http():
 
     assert c.get(f"/api/sessions/{sid}").json()["state"]["user_name"] == "Maya"
     assert c.get("/api/sessions/nope").status_code == 404
+
+
+def test_recap_edit_validates_and_tells_the_model():
+    fake = FakeClient([("Sure thing, Sam.", None, "end_turn")])
+    main.brain.client = fake
+    c = TestClient(main.app)
+    sid = c.post("/api/sessions").json()["state"]["session_id"]
+
+    r = c.post(f"/api/sessions/{sid}/fields", json={"field": "user_name", "value": "my name is Sam"})
+    assert r.status_code == 422 and "name" in r.json()["detail"]
+
+    st = c.post(f"/api/sessions/{sid}/fields", json={"field": "user_name", "value": "Sam"}).json()["state"]
+    assert st["user_name"] == "Sam" and st["transcript"][-1]["text"] == "Updated name: Sam"
+    assert c.post(f"/api/sessions/{sid}/fields", json={"field": "gmail", "value": "x@y.com"}).status_code == 422
+
+    sse(c.post(f"/api/sessions/{sid}/messages", json={"text": "cool"}))
+    sent = json.dumps(fake.calls[-1]["messages"][-1])
+    assert "edited their name in the recap" in sent  # the model hears about it once

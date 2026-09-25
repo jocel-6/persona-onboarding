@@ -6,17 +6,18 @@ Cost: Render "Starter" (always on, ~$7/month; the free tier sleeps and drops cal
 
 ## Why a TURN server?
 
-Voice calls use WebRTC, which sends audio directly between the browser and the backend. On a laptop that just works. Cloud hosts like Render and Railway only forward web traffic (HTTP on one port), so the direct audio path is blocked: the call would "connect" and then carry no sound. A TURN server relays the audio over allowed ports. Free options:
+Voice calls use WebRTC, which sends audio directly between the browser and the backend. On a laptop that just works. Cloud hosts like Render and Railway only forward web traffic (HTTP on one port), so the direct audio path is blocked: the call would "connect" and then carry no sound. A TURN server relays the audio over allowed ports. Use one with **long-lived credentials**, since the app reads one fixed list from `ICE_SERVERS`:
 
-- **Cloudflare Realtime TURN** (generous free tier): dashboard → Realtime → TURN → create a key; it gives you `urls`, `username`, `credential`.
-- **Metered.ca** (free tier): sign up → TURN server → copy the ICE servers array.
+- **Metered.ca** (free tier, recommended): sign up → create a credential (no expiry) → "Show ICE servers array".
+- Cloudflare Realtime TURN issues short-lived credentials from an API, so a fixed list would stop working after its TTL. It would need a small change to fetch credentials per call.
 
-Set it on the backend as `ICE_SERVERS` (JSON). Include a STUN entry too:
+Set it on the backend as `ICE_SERVERS`: the array as JSON on one line (double quotes, no trailing comment):
 
 ```json
-[{"urls":"stun:stun.cloudflare.com:3478"},
- {"urls":["turn:turn.cloudflare.com:3478?transport=udp","turn:turn.cloudflare.com:443?transport=tcp"],
-  "username":"<from provider>","credential":"<from provider>"}]
+[{"urls":"stun:stun.relay.metered.ca:80"},
+ {"urls":"turn:global.relay.metered.ca:80","username":"<from Metered>","credential":"<from Metered>"},
+ {"urls":"turn:global.relay.metered.ca:443","username":"<from Metered>","credential":"<from Metered>"},
+ {"urls":"turns:global.relay.metered.ca:443?transport=tcp","username":"<from Metered>","credential":"<from Metered>"}]
 ```
 
 The backend passes the same list to the browser, so both ends use the relay. (A VM with open UDP ports, e.g. a small EC2/Hetzner box running the Docker image with `--network host`, works without TURN.)

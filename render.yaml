@@ -26,7 +26,7 @@ services:
       - key: TTS_PROVIDER
         value: cartesia
       - key: TTS_VOICE_ID
-        sync: false
+        value: 630ed21c-2c5c-41cf-9d82-10a7fd668370  # Corey (Cartesia), picked in the voice bake-off
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET

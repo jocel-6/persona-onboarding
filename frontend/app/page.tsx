@@ -1602,7 +1602,12 @@ function DebugPanel({ s, latency, usage }: { s: SessionState; latency: TurnLaten
   ];
   return (
     <aside className="debug" aria-label="Session state">
-      <h3>Under the hood</h3>
+      <h3>
+        Under the hood{" "}
+        <a className="small" href="/metrics" target="_blank" rel="noreferrer" style={{ fontWeight: 400 }}>
+          metrics ↗
+        </a>
+      </h3>
       <dl>
         {rows.map(([k, v]) => (
           <div key={k}>

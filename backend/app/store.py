@@ -32,6 +32,24 @@ class SessionStore:
                    updated_at REAL NOT NULL
                )"""
         )
+        # Per-turn metrics for the dashboard (#16): latency, tokens, cost. No content.
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS turn_metrics (
+                   ts REAL NOT NULL,
+                   session_id TEXT NOT NULL,
+                   channel TEXT NOT NULL,
+                   model TEXT NOT NULL,
+                   ttft_ms REAL,
+                   total_ms REAL,
+                   first_audio_ms REAL,
+                   first_audio_via TEXT,
+                   input_tokens INTEGER,
+                   output_tokens INTEGER,
+                   cache_read_tokens INTEGER,
+                   cache_write_tokens INTEGER,
+                   cost_usd REAL
+               )"""
+        )
         self._conn.execute(
             """CREATE TABLE IF NOT EXISTS google_tokens (
                    session_id TEXT PRIMARY KEY,
@@ -63,6 +81,40 @@ class SessionStore:
             self._conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
             self._conn.execute("DELETE FROM google_tokens WHERE session_id = ?", (session_id,))
             self._conn.commit()
+
+    # ---- metrics ----
+
+    def record_turn(self, **m) -> None:
+        cols = ("ts", "session_id", "channel", "model", "ttft_ms", "total_ms", "first_audio_ms", "first_audio_via",
+                "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "cost_usd")
+        m.setdefault("ts", time.time())
+        with self._lock:
+            self._conn.execute(
+                f"INSERT INTO turn_metrics ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                tuple(m.get(c) for c in cols),
+            )
+            self._conn.commit()
+
+    def record_first_audio(self, session_id: str, ms: float, via: str) -> None:
+        """Voice: attach first-audio latency to that session's latest turn."""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE turn_metrics SET first_audio_ms = ?, first_audio_via = ? WHERE rowid = "
+                "(SELECT rowid FROM turn_metrics WHERE session_id = ? AND channel = 'voice' ORDER BY ts DESC LIMIT 1)",
+                (ms, via, session_id),
+            )
+            self._conn.commit()
+
+    def turn_rows(self, since: float) -> list[dict]:
+        with self._lock:
+            cur = self._conn.execute("SELECT * FROM turn_metrics WHERE ts >= ?", (since,))
+            names = [d[0] for d in cur.description]
+            return [dict(zip(names, r)) for r in cur.fetchall()]
+
+    def session_states(self, since: float) -> list[OnboardingState]:
+        with self._lock:
+            rows = self._conn.execute("SELECT state FROM sessions WHERE updated_at >= ?", (since,)).fetchall()
+        return [OnboardingState.model_validate_json(r[0]) for r in rows]
 
     def stale_session_ids(self, older_than_secs: float) -> list[str]:
         cutoff = time.time() - older_than_secs

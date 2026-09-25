@@ -7,6 +7,7 @@
   DELETE /api/sessions/{id}             forget the session
   POST   /api/sessions/{id}/fields      fix a field from the recap (validated, no model call)
   GET    /api/sessions/{id}/export      everything Persona stored about you, as JSON (no tokens)
+  GET    /api/metrics                   funnel, latency and cost for the dashboard (no content)
   GET    /api/voices/{voice_id}/sample  "Hi, I'm <name>!" in that voice, for the picker
   POST   /api/sessions/{id}/voice       pick the agent's voice
   POST   /api/sessions/{id}/insights/{insight_id}/add   turn a finding's fix into a confirm card
@@ -119,6 +120,19 @@ def _load(session_id: str) -> OnboardingState:
 def _sse_response(gen: AsyncIterator[str]) -> StreamingResponse:
     return StreamingResponse(
         gen, media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
+
+
+def record_turn_metrics(session_id: str, channel: str, done: dict[str, Any]) -> None:
+    from .metrics import turn_cost
+
+    u = done.get("usage") or {}
+    store.record_turn(
+        session_id=session_id, channel=channel, model=settings.llm_model,
+        ttft_ms=done["latency"].get("ttft_ms"), total_ms=done["latency"].get("total_ms"),
+        input_tokens=u.get("input_tokens"), output_tokens=u.get("output_tokens"),
+        cache_read_tokens=u.get("cache_read_input_tokens"), cache_write_tokens=u.get("cache_creation_input_tokens"),
+        cost_usd=turn_cost(settings.llm_model, u),
     )
 
 
@@ -264,6 +278,8 @@ async def _stream_turn(
                 spoken_on = active_calls.get(session_id)
         if spoken_on is None and (user_text is not None or event_text):
             async for ev in brain.run_turn(state, user_text=user_text, event_text=event_text):
+                if ev["type"] == "done":
+                    record_turn_metrics(session_id, state.channel, ev)
                 yield _sse(ev)
         store.save(state)
         yield _sse({"type": "state", "state": state.public_view()})
@@ -469,6 +485,16 @@ def export_session(session_id: str) -> Response:
         media_type="application/json",
         headers={"Content-Disposition": 'attachment; filename="persona-my-data.json"'},
     )
+
+
+@app.get("/api/metrics")
+def metrics(days: float = 30, token: str = "") -> dict[str, Any]:
+    from .metrics import compute
+
+    if settings.metrics_token and token != settings.metrics_token:
+        raise HTTPException(401, "metrics token required")
+    since = time.time() - max(0.01, min(days, 365)) * 86400
+    return compute(store.turn_rows(since), store.session_states(since))
 
 
 @app.post("/api/sessions/{session_id}/messages")

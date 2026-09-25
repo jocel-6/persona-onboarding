@@ -109,3 +109,23 @@ def test_export_has_everything_but_never_tokens():
     assert "secret-at" not in body and "secret-rt" not in body
     data = json.loads(body)
     assert data["google_access_token_stored"] is True and data["conversation"][0]["role"] == "agent"
+
+
+def test_metrics_funnel_latency_and_cost():
+    from app import runtime
+
+    fake = FakeClient([("Nice to meet you!", {"user_name": "Maya", "help_topic": "school emails"}, "tool_use")])
+    main.brain.client = fake
+    c = TestClient(main.app)
+    sid = c.post("/api/sessions").json()["state"]["session_id"]
+    sse(c.post(f"/api/sessions/{sid}/messages", json={"text": "I'm Maya, school emails are burying me"}))
+    runtime.store.record_turn(session_id=sid, channel="voice", model="claude-haiku-4-5", ttft_ms=500, total_ms=900,
+                              input_tokens=100, output_tokens=20, cost_usd=0.0002)
+    runtime.store.record_first_audio(sid, 980, "reply")
+
+    m = c.get("/api/metrics?days=1").json()
+    steps = {f["step"]: f["count"] for f in m["funnel"]}
+    assert steps["Opened Persona"] >= 1 and steps["Shared what they need"] >= 1
+    assert m["kpis"]["voice_first_audio_p50"] == 980 and m["kpis"]["turns"] >= 2
+    assert sum(b["count"] for b in m["voice_latency_hist"]) >= 1
+    assert any(r["model"] == "claude-haiku-4-5" for r in m["by_model"])

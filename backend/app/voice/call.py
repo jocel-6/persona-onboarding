@@ -316,6 +316,9 @@ class BrainService(FrameProcessor):
                     elif ev["type"] == "ui":
                         await self._send(ev)
                     elif ev["type"] == "done":
+                        from ..main import record_turn_metrics
+
+                        record_turn_metrics(sid, "voice", ev)
                         await self._send(ev)
                 finished = True
             finally:
@@ -401,6 +404,7 @@ class BrainService(FrameProcessor):
             "stt": runtime.settings.stt_engine,
         }
         self._t_turn_end = None
+        runtime.store.record_first_audio(self.call.session_id, entry["turn_end_to_first_audio_ms"], entry["first_audio"])
         log.info("voice latency %s", entry)
         try:
             LATENCY_LOG.parent.mkdir(parents=True, exist_ok=True)

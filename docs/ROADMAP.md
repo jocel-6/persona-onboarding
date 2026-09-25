@@ -45,7 +45,7 @@ Ideas beyond the take-home spec, chosen to make the consumer experience better a
 | # | Idea | Why | Status |
 |---|---|---|---|
 | 15 | **Voice evals at scale.** All personas through real audio calls; transcription accuracy and latency distributions. | Proves the voice path, not just text | ⬜ |
-| 16 | **Metrics dashboard.** Latency p50/p90, cost per conversation, onboarding funnel and drop-off. | The plan's "learn from drop-off" item | ⬜ |
+| 16 | **Metrics dashboard.** Latency p50/p90, cost per conversation, onboarding funnel and drop-off. | The plan's "learn from drop-off" item | ✅ |
 | 17 | **Quality gate in CI.** A small eval subset on demand/for PRs that blocks regressions. | Quality that can't silently slip | ⬜ |
 
 ## Build order

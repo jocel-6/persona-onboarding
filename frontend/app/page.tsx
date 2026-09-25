@@ -58,6 +58,8 @@ export default function Onboarding() {
   const [doneDismissed, setDoneDismissed] = useState(false);
   const [recapDismissed, setRecapDismissed] = useState(false);
   const [insightsDismissed, setInsightsDismissed] = useState(false);
+  // After they act on a finding, the card shrinks to one line so the next step has the stage.
+  const [insightsCollapsed, setInsightsCollapsed] = useState(false);
   const [voicePickerDone, setVoicePickerDone] = useState(false);
   const [knowsOpen, setKnowsOpen] = useState(false);
   const [debug, setDebug] = useState(false);
@@ -583,17 +585,23 @@ export default function Onboarding() {
             )}
 
             {session && session.gmail_status === "connected" && session.insights?.length > 0 && !insightsDismissed &&
-              callView === "none" && (
+              !session.pending_event && !session.pending_draft && callView === "none" && (
                 <InsightsCard
                   insights={session.insights}
                   demo={session.gmail_demo}
-                  onFix={(i) =>
+                  collapsed={insightsCollapsed}
+                  onExpand={() => setInsightsCollapsed(false)}
+                  onFix={(i) => {
+                    setInsightsCollapsed(true);
                     void (i.action?.type === "draft_reply"
                       ? draftReply(session.session_id, i.id)
                       : addInsightFix(session.session_id, i.id)
-                    ).then(applyState).catch((e) => setError(String(e.message)))
-                  }
-                  onAsk={(i) => sendMessage(`Tell me more about this: ${i.headline}`)}
+                    ).then(applyState).catch((e) => setError(String(e.message)));
+                  }}
+                  onAsk={(i) => {
+                    setInsightsCollapsed(true);
+                    sendMessage(`Tell me more about this: ${i.headline}`);
+                  }}
                   onDismiss={() => setInsightsDismissed(true)}
                 />
               )}
@@ -679,18 +687,34 @@ export default function Onboarding() {
           onReady={session?.wrapping_up && !graduated ? () => sendEvent("graduate") : undefined}
           gmail={
             <>
-              {session && session.gmail_status === "connected" && session.insights?.length > 0 && !session.pending_event && (
+              {session && session.gmail_status === "connected" && session.insights?.length > 0 &&
+                !session.pending_event && !session.pending_draft && (
                 <InsightsCard
                   compact
                   insights={session.insights}
                   demo={session.gmail_demo}
-                  onFix={(i) =>
+                  collapsed={insightsCollapsed}
+                  onExpand={() => setInsightsCollapsed(false)}
+                  onFix={(i) => {
+                    setInsightsCollapsed(true);
                     void (i.action?.type === "draft_reply"
                       ? draftReply(session.session_id, i.id)
                       : addInsightFix(session.session_id, i.id)
-                    ).then(applyState).catch(() => {})
-                  }
-                  onAsk={(i) => sendMessage(`Tell me more about this: ${i.headline}`)}
+                    ).then(applyState).catch(() => {});
+                  }}
+                  onAsk={(i) => {
+                    setInsightsCollapsed(true);
+                    sendMessage(`Tell me more about this: ${i.headline}`);
+                  }}
+                />
+              )}
+              {session?.pending_draft && (
+                <DraftCard
+                  key={session.pending_draft.body}
+                  draft={session.pending_draft}
+                  demo={session.gmail_demo}
+                  onSave={(body) => sendEvent("draft_confirmed", { body })}
+                  onCancel={() => sendEvent("draft_cancelled")}
                 />
               )}
               {session?.pending_event && (
@@ -1420,6 +1444,8 @@ function InsightsCard({
   insights,
   demo,
   compact,
+  collapsed,
+  onExpand,
   onFix,
   onAsk,
   onDismiss,
@@ -1427,10 +1453,25 @@ function InsightsCard({
   insights: Insight[];
   demo: boolean;
   compact?: boolean;
+  collapsed?: boolean;
+  onExpand?: () => void;
   onFix: (i: Insight) => void;
   onAsk: (i: Insight) => void;
   onDismiss?: () => void;
 }) {
+  if (collapsed) {
+    return (
+      <div className="card insights collapsed">
+        <strong>Persona noticed</strong>
+        <span className="small muted">
+          {insights.length} {insights.length === 1 ? "thing" : "things"}
+        </span>
+        <button className="link small" onClick={onExpand}>
+          Show
+        </button>
+      </div>
+    );
+  }
   const shown = insights.slice(0, compact ? 2 : 3);
   return (
     <div className={`card insights ${compact ? "compact" : ""}`}>

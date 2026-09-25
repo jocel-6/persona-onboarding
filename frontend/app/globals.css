@@ -1073,3 +1073,13 @@ button.danger {
   .funnel-row { grid-template-columns: 1fr; gap: 4px; }
 }
 .hist-unit { margin: 2px 0 0; text-align: center; font-size: 11px; color: var(--muted); }
+
+.card.insights.collapsed {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+}
+.card.insights.collapsed .link {
+  margin-left: auto;
+}

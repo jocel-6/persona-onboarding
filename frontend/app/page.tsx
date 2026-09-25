@@ -960,6 +960,11 @@ function CallScreen({
     return () => clearInterval(t);
   }, [view]);
 
+  const [show, setShow] = useCallDisplay();
+  // A typed (no-audio) call has no sound, so its text always shows.
+  const showCaptions = !voice || show.captions;
+  const callTurns = transcript.filter((t) => t.channel === "voice" && (t.role === "user" || t.role === "agent"));
+
   const lastAgentVoice = [...transcript].reverse().find((t) => t.role === "agent" && t.channel === "voice")?.text;
   // On a real call, show words as they're spoken (TTS word timestamps); otherwise the streamed text.
   const caption = (voice && spokenCaption) || live || lastAgentVoice || "";
@@ -993,18 +998,42 @@ function CallScreen({
           </div>
         ) : (
           <>
-            <div className="caption" aria-live="polite">
-              {pendingUser && <p className="you">You: {pendingUser}</p>}
-              {caption && <p>{caption}</p>}
-            </div>
+            {show.transcript && voice ? (
+              <CallTranscript turns={callTurns} agentName={agentName} pendingUser={pendingUser} live={caption} />
+            ) : (
+              showCaptions && (
+                <div className="caption" aria-live="polite">
+                  {pendingUser && <p className="you">You: {pendingUser}</p>}
+                  {caption && <p>{caption}</p>}
+                </div>
+              )
+            )}
             {gmail}
             {voice ? (
               <>
-                <div className="mic" aria-label="Microphone level">
-                  <div className="mic-bar">
-                    <div className="mic-fill" style={{ width: `${Math.min(100, Math.round(micLevel * 250))}%` }} />
+                {(show.mic || micProblem) && (
+                  <div className="mic" aria-label="Microphone level">
+                    <div className="mic-bar">
+                      <div className="mic-fill" style={{ width: `${Math.min(100, Math.round(micLevel * 250))}%` }} />
+                    </div>
+                    <span className="small muted">{micName ?? "microphone"}</span>
                   </div>
-                  <span className="small muted">{micName ?? "microphone"}</span>
+                )}
+                <div className="call-toggles" role="group" aria-label="What to show on the call">
+                  {([
+                    ["captions", "Captions"],
+                    ["transcript", "Transcript"],
+                    ["mic", "Mic level"],
+                  ] as const).map(([k, label]) => (
+                    <button
+                      key={k}
+                      className={`toggle${show[k] ? " on" : ""}`}
+                      aria-pressed={show[k]}
+                      onClick={() => setShow({ ...show, [k]: !show[k] })}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
                 {micProblem && (
                   <div className="banner error mic-help" role="alert">
@@ -1040,6 +1069,67 @@ function CallScreen({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+type CallDisplay = { captions: boolean; transcript: boolean; mic: boolean };
+const CALL_DISPLAY_KEY = "persona.callDisplay";
+
+/** What the call screen shows besides the orb. Off by default: the call is just talking. Remembered per device. */
+function useCallDisplay(): [CallDisplay, (d: CallDisplay) => void] {
+  // The call screen only mounts after a tap, never during server rendering, so reading storage here is safe.
+  const [d, setD] = useState<CallDisplay>(() => {
+    const off = { captions: false, transcript: false, mic: false };
+    try {
+      const saved = JSON.parse(localStorage.getItem(CALL_DISPLAY_KEY) ?? "null");
+      return saved && typeof saved === "object" ? { ...off, ...saved } : off;
+    } catch {
+      return off;
+    }
+  });
+  const update = (next: CallDisplay) => {
+    setD(next);
+    try {
+      localStorage.setItem(CALL_DISPLAY_KEY, JSON.stringify(next));
+    } catch {}
+  };
+  return [d, update];
+}
+
+function CallTranscript({
+  turns,
+  agentName,
+  pendingUser,
+  live,
+}: {
+  turns: SessionState["transcript"];
+  agentName: string;
+  pendingUser: string | null;
+  live: string;
+}) {
+  const end = useRef<HTMLDivElement>(null);
+  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [turns.length, pendingUser, live]);
+  const lastAgent = [...turns].reverse().find((t) => t.role === "agent")?.text;
+  return (
+    <div className="call-transcript" aria-live="polite" aria-label="Call transcript">
+      {turns.length === 0 && !pendingUser && !live && <p className="small muted">The transcript will appear here.</p>}
+      {turns.map((t, i) => (
+        <p key={i} className={t.role === "user" ? "you" : undefined}>
+          <strong>{t.role === "user" ? "You" : agentName}:</strong> {t.text}
+        </p>
+      ))}
+      {pendingUser && (
+        <p className="you">
+          <strong>You:</strong> {pendingUser}
+        </p>
+      )}
+      {live && live !== lastAgent && (
+        <p>
+          <strong>{agentName}:</strong> {live}
+        </p>
+      )}
+      <div ref={end} />
     </div>
   );
 }

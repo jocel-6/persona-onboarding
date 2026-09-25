@@ -13,6 +13,8 @@ import {
   type EventType,
   type SessionState,
   type StreamEvent,
+  type TurnLatency,
+  type TurnUsage,
   type UiEvent,
 } from "@/lib/api";
 import { startVoiceCall, type VoiceCall } from "@/lib/voice";
@@ -47,7 +49,8 @@ export default function Onboarding() {
   const [doneDismissed, setDoneDismissed] = useState(false);
   const [recapDismissed, setRecapDismissed] = useState(false);
   const [debug, setDebug] = useState(false);
-  const [latency, setLatency] = useState<{ ttft_ms: number | null; total_ms: number } | null>(null);
+  const [latency, setLatency] = useState<TurnLatency | null>(null);
+  const [usage, setUsage] = useState<TurnUsage | null>(null);
 
   // Real voice call state (Phase 2). Without voice configured, calls fall back to typing.
   const voiceRef = useRef<VoiceCall | null>(null);
@@ -150,8 +153,10 @@ export default function Onboarding() {
         voiceTextRef.current += e.text;
         setLive(voiceTextRef.current);
       } else if (e.type === "ui") handleUi(e.ui);
-      else if (e.type === "done") setLatency(e.latency);
-      else if (e.type === "state") {
+      else if (e.type === "done") {
+        setLatency(e.latency);
+        setUsage(e.usage ?? null);
+      } else if (e.type === "state") {
         voiceTextRef.current = "";
         applyState(e.state);
         setLive(null);
@@ -174,8 +179,10 @@ export default function Onboarding() {
               text += e.text;
               setLive(text);
             } else if (e.type === "ui") handleUi(e.ui);
-            else if (e.type === "done") setLatency(e.latency);
-            else if (e.type === "state") {
+            else if (e.type === "done") {
+              setLatency(e.latency);
+              setUsage(e.usage ?? null);
+            } else if (e.type === "state") {
               applyState(e.state);
               setLive(null);
               setPendingUser(null);
@@ -533,7 +540,7 @@ export default function Onboarding() {
           />
         </section>
 
-        {debug && session && <DebugPanel s={session} latency={latency} />}
+        {debug && session && <DebugPanel s={session} latency={latency} usage={usage} />}
       </main>
 
       {callView !== "none" && (
@@ -1048,7 +1055,9 @@ function DonePanel({
   );
 }
 
-function DebugPanel({ s, latency }: { s: SessionState; latency: { ttft_ms: number | null; total_ms: number } | null }) {
+function DebugPanel({ s, latency, usage }: { s: SessionState; latency: TurnLatency | null; usage: TurnUsage | null }) {
+  const cached = usage?.cache_read_input_tokens ?? 0;
+  const fresh = (usage?.input_tokens ?? 0) + (usage?.cache_creation_input_tokens ?? 0);
   const rows: [string, string][] = [
     ["agent_name", s.agent_name ?? "—"],
     ["user_name", s.user_name ?? "—"],
@@ -1063,6 +1072,7 @@ function DebugPanel({ s, latency }: { s: SessionState; latency: { ttft_ms: numbe
     ["graduated", String(s.graduated)],
     ["corrected", s.corrected.join(", ") || "—"],
     ["last turn", latency ? `first token ${latency.ttft_ms ?? "—"}ms · total ${latency.total_ms}ms` : "—"],
+    ["prompt cache", usage ? `${cached.toLocaleString()} cached / ${fresh.toLocaleString()} new tokens` : "—"],
   ];
   return (
     <aside className="debug" aria-label="Session state">
@@ -1075,6 +1085,12 @@ function DebugPanel({ s, latency }: { s: SessionState; latency: { ttft_ms: numbe
           </div>
         ))}
       </dl>
+      {s.last_director_note && (
+        <>
+          <h3 className="note-title">Director&apos;s note (what the code told the model)</h3>
+          <pre className="note">{s.last_director_note.replace(/<\/?director_note>\n?/g, "")}</pre>
+        </>
+      )}
     </aside>
   );
 }

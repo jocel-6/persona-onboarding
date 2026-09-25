@@ -64,6 +64,12 @@ class SessionStore:
             self._conn.execute("DELETE FROM google_tokens WHERE session_id = ?", (session_id,))
             self._conn.commit()
 
+    def stale_session_ids(self, older_than_secs: float) -> list[str]:
+        cutoff = time.time() - older_than_secs
+        with self._lock:
+            rows = self._conn.execute("SELECT id FROM sessions WHERE updated_at < ?", (cutoff,)).fetchall()
+        return [r[0] for r in rows]
+
     # ---- Google tokens (server-side only) ----
 
     def save_tokens(self, session_id: str, tokens: dict) -> None:

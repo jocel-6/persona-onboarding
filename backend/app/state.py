@@ -88,6 +88,11 @@ class OnboardingState(BaseModel):
     # model should hear about on its next turn.
     pending_notes: list[str] = Field(default_factory=list)
 
+    # The user's IANA timezone from the browser, so "tomorrow 9:15am" is right wherever the server runs.
+    user_tz: str | None = None
+    # What the code told the model on the latest turn, shown in the "Under the hood" panel.
+    last_director_note: str | None = None
+
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
 

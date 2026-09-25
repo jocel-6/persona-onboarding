@@ -202,3 +202,16 @@ def test_an_ended_call_cannot_be_revived_by_a_late_connect():
     s.call_status = "ringing"
     text, _ = apply_event(s, "call_connected", {})
     assert text and s.call_status == "in_progress"
+
+
+def test_after_graduation_it_becomes_the_assistant_and_uses_the_account():
+    from app.google import demo_snapshot
+
+    s = OnboardingState(agent_name="Kai", user_name="Jo", help_topic="school emails", graduated=True)
+    s.gmail_status, s.gmail, s.account_snapshot = "connected", "demo account", demo_snapshot()
+    note = orch.directors_note(s, channel="text")
+    assert "you're now their assistant" in note and "Account snapshot" in note
+    assert "Wrap up" not in note  # no more goodbyes after the goodbye
+
+    s = OnboardingState(agent_name="Kai", help_topic="school emails", graduated=True)
+    assert "Still unknown: their name, Gmail" in orch.directors_note(s, channel="text")

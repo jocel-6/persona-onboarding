@@ -101,3 +101,34 @@ def test_leading_backchannels_are_dropped_from_a_turn():
     assert strip_leading_backchannels("Mhmm. Sorry. I just meant my calendar?") == "Sorry. I just meant my calendar?"
     assert strip_leading_backchannels("Yeah.") == "Yeah."  # on its own, it's an answer
     assert strip_leading_backchannels("Yeah, that works.") == "Yeah, that works."
+
+
+def test_nothing_unspeakable_reaches_text_to_speech():
+    from app.voice.turntaking import speakable
+
+    assert speakable("Love it 🙌 **Juno** it is!") == "Love it  Juno it is!"
+    assert speakable("See [the docs](https://x.y/z) — ok") == "See the docs — ok"
+    assert speakable("You've got the dentist Thursday at 9:15.") == "You've got the dentist Thursday at 9:15."
+
+
+def test_stale_sessions_are_revoked_then_deleted(monkeypatch):
+    import os
+    os.environ.setdefault("DB_PATH", ":memory:")
+    from app import google, main, runtime
+
+    revoked = []
+
+    async def fake_revoke(tok):
+        revoked.append(tok)
+
+    monkeypatch.setattr(google, "revoke", fake_revoke)
+    old = OnboardingState()
+    runtime.store.save(old)
+    runtime.store._conn.execute("UPDATE sessions SET updated_at = 0 WHERE id = ?", (old.session_id,))
+    runtime.store.save_tokens(old.session_id, {"refresh_token": "rt-old"})
+    fresh = OnboardingState()
+    runtime.store.save(fresh)
+
+    assert asyncio.run(main.purge_stale_sessions()) >= 1
+    assert runtime.store.get(old.session_id) is None and runtime.store.get_tokens(old.session_id) is None
+    assert "rt-old" in revoked and runtime.store.get(fresh.session_id) is not None

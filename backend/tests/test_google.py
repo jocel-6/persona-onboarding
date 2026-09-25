@@ -30,9 +30,9 @@ def test_scopes_are_minimal_and_read_only():
 
 
 def test_snapshot_description_is_friendly_and_marks_demo():
-    now = datetime(2026, 9, 24, 12, 0).astimezone()
-    snap = google.demo_snapshot(now)
-    text = google.describe_snapshot(snap, now)
+    now = datetime(2026, 9, 24, 19, 0, tzinfo=google.timezone.utc)  # noon in Los Angeles
+    snap = google.demo_snapshot(now, "America/Los_Angeles")
+    text = google.describe_snapshot(snap, now, "America/Los_Angeles")
     assert "DEMO data" in text
     assert "Dentist appointment (" in text and "9:15am" in text
     assert '"Field trip permission slip due Friday" from Lincoln Elementary' in text
@@ -121,3 +121,11 @@ def test_unticked_permissions_are_not_connected(monkeypatch):
     tok = loc.split("state=")[1].split("&")[0]
     assert '"reason": "missing_scopes"' in c.get(f"/api/google/callback?state={tok}&code=x").text
     assert revoked == ["at"] and runtime.store.get_tokens(sid) is None
+
+
+def test_event_times_are_shown_in_the_users_timezone_not_the_servers():
+    utc_event = {"events": [{"title": "Standup", "start": "2026-09-25T16:30:00Z"}], "emails": []}
+    now = datetime(2026, 9, 24, 19, 0, tzinfo=google.timezone.utc)
+    assert "Standup (tomorrow 9:30am)" in google.describe_snapshot(utc_event, now, "America/Los_Angeles")
+    assert "Standup (tomorrow 1:30am)" in google.describe_snapshot(utc_event, now, "Asia/Tokyo")  # already the 25th there
+    assert "(tomorrow 4:30pm)" in google.describe_snapshot(utc_event, now, "Not/AZone")  # bad tz -> UTC, no crash

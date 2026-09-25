@@ -111,7 +111,7 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
         if data.get("demo"):
             if not runtime.settings.allow_demo_data:
                 return None, ui
-            state.account_snapshot = demo_snapshot()
+            state.account_snapshot = demo_snapshot(tz_name=state.user_tz)
             state.gmail_demo = True
             state.gmail = "demo account"
         elif runtime.settings.gmail_stub:

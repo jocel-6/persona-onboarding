@@ -156,3 +156,19 @@ class BackchannelAwareStartStrategy(BaseUserTurnStartStrategy):
                 self.backchannels_ignored += 1
                 await self.trigger_reset_aggregation()
         return ProcessFrameResult.CONTINUE
+
+
+# Emoji, pictographs, and markdown syntax that TTS would read aloud or stumble over.
+_EMOJI_RE = re.compile(
+    "[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0001F900-\U0001F9FF\U00002B00-\U00002BFF\uFE0F\u200D]"
+)
+_MARKDOWN_RE = re.compile(r"[*_`#>|]+|\[(?=[^\]]*\]\()|\]\([^)]*\)")
+
+
+def speakable(text: str) -> str:
+    """Strip what shouldn't be spoken: emoji, markdown symbols, link targets.
+
+    The prompt already asks for plain spoken replies on calls; this is the code-side
+    guarantee, applied to each streamed chunk before it reaches text-to-speech.
+    """
+    return _MARKDOWN_RE.sub("", _EMOJI_RE.sub("", text))

@@ -602,3 +602,17 @@ button.link:hover {
   color: var(--bad);
   width: 100%;
 }
+
+.note-title {
+  margin-top: 14px !important;
+}
+.note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 11px;
+  line-height: 1.45;
+}

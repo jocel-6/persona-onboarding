@@ -23,6 +23,7 @@ import logging
 import random
 import time
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -56,7 +57,14 @@ settings = runtime.settings
 store = runtime.store
 brain = runtime.brain
 
-app = FastAPI(title="Persona onboarding")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    sweeper = asyncio.create_task(_retention_loop())
+    yield
+    sweeper.cancel()
+
+
+app = FastAPI(title="Persona onboarding", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],
@@ -154,6 +162,31 @@ async def _stream_turn(
 
 
 # ---------------------------------------------------------------------------
+# Retention: nothing is kept forever
+# ---------------------------------------------------------------------------
+
+
+async def purge_stale_sessions() -> int:
+    """Revoke Google access and delete sessions idle longer than RETENTION_DAYS."""
+    stale = store.stale_session_ids(settings.retention_days * 86400)
+    for sid in stale:
+        await _revoke_google(sid)
+        store.delete(sid)
+    if stale:
+        log.info("retention: purged %d idle session(s)", len(stale))
+    return len(stale)
+
+
+async def _retention_loop() -> None:
+    while True:
+        try:
+            await purge_stale_sessions()
+        except Exception:  # noqa: BLE001 - retention must never take the app down
+            log.exception("retention sweep failed")
+        await asyncio.sleep(3600)
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -163,9 +196,13 @@ def health() -> dict[str, Any]:
     return {"ok": True, "model": settings.llm_model, **_config()}
 
 
+class SessionIn(BaseModel):
+    tz: str | None = Field(default=None, max_length=64)
+
+
 @app.post("/api/sessions")
-def create_session() -> dict[str, Any]:
-    state = OnboardingState()
+def create_session(body: SessionIn | None = None) -> dict[str, Any]:
+    state = OnboardingState(user_tz=(body.tz if body else None) or None)
     opener = random.choice(OPENERS)
     names = random.sample(NAME_POOL, 3)
     # Seed the history so the model knows what it already said. Static text,

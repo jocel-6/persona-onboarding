@@ -54,7 +54,7 @@ from .. import runtime
 from ..events import apply_event
 from ..state import OnboardingState
 from .tts import make_tts
-from .turntaking import BackchannelAwareStartStrategy, strip_leading_backchannels
+from .turntaking import BackchannelAwareStartStrategy, speakable, strip_leading_backchannels
 
 log = logging.getLogger("persona.voice")
 
@@ -181,7 +181,8 @@ class BrainService(FrameProcessor):
                             started = True
                             self._t_first_token = time.perf_counter()
                             await self.push_frame(LLMFullResponseStartFrame())
-                        await self.push_frame(LLMTextFrame(ev["text"]))
+                        if spoken := speakable(ev["text"]):
+                            await self.push_frame(LLMTextFrame(spoken))
                         await self._send(ev)
                     elif ev["type"] == "ui":
                         await self._send(ev)

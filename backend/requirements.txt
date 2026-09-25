@@ -4,6 +4,7 @@ uvicorn[standard]==0.53.0
 pydantic==2.13.5
 python-dotenv
 httpx
+tzdata  # IANA timezones on servers without a system database
 certifi  # trusted CA bundle for the voice websockets on macOS
 # Voice (Phase 2): Pipecat with Silero VAD, Smart Turn v3, Deepgram, Cartesia/ElevenLabs/OpenAI TTS, WebRTC
 pipecat-ai[silero,deepgram,cartesia,elevenlabs,openai,webrtc]==1.11.0

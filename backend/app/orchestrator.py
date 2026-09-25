@@ -321,7 +321,16 @@ def _priority(state: OnboardingState) -> list[str]:
     lines: list[str] = []
 
     if s.graduated:
-        return ["They've graduated. Wrap up warmly in one sentence; don't ask for anything."]
+        # Onboarding is over; the same brain is now their everyday assistant.
+        lines = [
+            "Onboarding is done: you're now their assistant. Help with whatever they ask, briefly and specifically. "
+            "You can suggest, plan, and draft, but you can't send, book, or change anything yet: offer, and say "
+            "you'll do it once they say go. Use the account snapshot when it's relevant."
+        ]
+        missing = [label for slot, label in (("user_name", "their name"), ("gmail", "Gmail")) if not getattr(s, slot)]
+        if missing:
+            lines.append(f"Still unknown: {', '.join(missing)}. Pick it up only if it comes up naturally; never as a checklist.")
+        return lines
 
     if s.wrapping_up:
         if not s.starter_suggestions:
@@ -496,8 +505,8 @@ def directors_note(state: OnboardingState, *, channel: str, user_text: str = "")
         length = "One sentence."
 
     snapshot = ""
-    if s.gmail_status == "connected" and s.account_snapshot and (value_moment_due(s) or s.wrapping_up):
-        snapshot = "Account snapshot (read-only):\n" + describe_snapshot(s.account_snapshot)
+    if s.gmail_status == "connected" and s.account_snapshot and (value_moment_due(s) or s.wrapping_up or s.graduated):
+        snapshot = "Account snapshot (read-only):\n" + describe_snapshot(s.account_snapshot, tz_name=s.user_tz)
 
     lines = [
         f"Channel: {channel} ({call})",

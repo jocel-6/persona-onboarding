@@ -65,6 +65,8 @@ class Settings:
     cartesia_api_key: str = field(default_factory=lambda: _env("CARTESIA_API_KEY", ""))
     elevenlabs_api_key: str = field(default_factory=lambda: _env("ELEVENLABS_API_KEY", ""))
     openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY", ""))
+    # Privacy: sessions (and their Google tokens, revoked first) are deleted after this many days idle.
+    retention_days: float = field(default_factory=lambda: float(_env("RETENTION_DAYS", "7")))
     # End of turn: Smart Turn replies right away when it judges you're done; when it's unsure,
     # wait at most this long in silence. Pipecat's default is 3s, which on real callers meant
     # ~4.5s before every reply (the model often judged finished sentences "incomplete").

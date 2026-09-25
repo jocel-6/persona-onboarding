@@ -35,6 +35,7 @@ export type SessionState = {
   graduation_offered: boolean;
   graduated: boolean;
   corrected: string[];
+  last_director_note: string | null;
   transcript: Turn[];
 };
 
@@ -53,10 +54,18 @@ export type UiEvent =
   | { type: "graduated" }
   | { type: "slot"; slot: string; value: string };
 
+export type TurnLatency = { ttft_ms: number | null; total_ms: number };
+export type TurnUsage = {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+};
+
 export type StreamEvent =
   | { type: "delta"; text: string }
   | { type: "ui"; ui: UiEvent }
-  | { type: "done"; reply: string; latency: { ttft_ms: number | null; total_ms: number } }
+  | { type: "done"; reply: string; latency: TurnLatency; usage?: TurnUsage }
   | { type: "state"; state: SessionState }
   | { type: "end" };
 
@@ -85,7 +94,15 @@ export type Config = {
 };
 
 export async function createSession(): Promise<{ state: SessionState; ui: UiEvent[]; config: Config }> {
-  const r = await fetch(`${API_URL}/api/sessions`, { method: "POST" });
+  let tz: string | undefined;
+  try {
+    tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {}
+  const r = await fetch(`${API_URL}/api/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tz }),
+  });
   if (!r.ok) throw new Error(`create session failed: ${r.status}`);
   return r.json();
 }

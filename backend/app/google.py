@@ -21,6 +21,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
@@ -204,8 +205,16 @@ def _sender_name(from_header: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def demo_snapshot(now: datetime | None = None) -> dict[str, Any]:
-    now = (now or datetime.now()).astimezone()
+def user_zone(tz_name: str | None) -> timezone | ZoneInfo:
+    """The user's timezone from their browser; UTC if unknown or invalid."""
+    try:
+        return ZoneInfo(tz_name) if tz_name else timezone.utc
+    except (ZoneInfoNotFoundError, ValueError):
+        return timezone.utc
+
+
+def demo_snapshot(now: datetime | None = None, tz_name: str | None = None) -> dict[str, Any]:
+    now = (now or datetime.now(timezone.utc)).astimezone(user_zone(tz_name))
 
     def at(days: int, hour: int, minute: int = 0) -> str:
         d = (now + timedelta(days=days)).replace(hour=hour, minute=minute, second=0, microsecond=0)
@@ -240,16 +249,18 @@ def demo_snapshot(now: datetime | None = None) -> dict[str, Any]:
 
 
 def _when(start: str, now: datetime) -> str:
+    """'tomorrow 9:15am' in the user's timezone (now carries it), however the event was stored."""
     try:
-        if len(start) == 10:  # all-day event: YYYY-MM-DD
-            d = datetime.fromisoformat(start).date()
-            label, time_part = d, ""
+        if len(start) == 10:  # all-day event: YYYY-MM-DD (no timezone by definition)
+            label, time_part = datetime.fromisoformat(start).date(), ""
         else:
             dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
-            d = dt.date()
-            label = d
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=now.tzinfo)
+            dt = dt.astimezone(now.tzinfo)
+            label = dt.date()
             time_part = " " + dt.strftime("%-I:%M%p").lower().replace(":00", "")
-        local_today = now.astimezone().date()
+        local_today = now.date()
         delta = (label - local_today).days
         day = "today" if delta == 0 else "tomorrow" if delta == 1 else label.strftime("%A %b %-d")
         return day + time_part
@@ -257,11 +268,13 @@ def _when(start: str, now: datetime) -> str:
         return start
 
 
-def describe_snapshot(snap: dict[str, Any] | None, now: datetime | None = None) -> str:
+def describe_snapshot(snap: dict[str, Any] | None, now: datetime | None = None, tz_name: str | None = None) -> str:
     """Compact, model-facing summary. Titles and subjects only; never bodies."""
     if not snap:
         return "no account data"
-    now = now or datetime.now().astimezone()
+    now = now or datetime.now(timezone.utc)
+    if tz_name:
+        now = now.astimezone(user_zone(tz_name))
     lines = []
     if snap.get("demo"):
         lines.append("(DEMO data, not their real account: say so if you mention something from it)")

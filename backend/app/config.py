@@ -23,6 +23,14 @@ if not os.environ.get("SSL_CERT_FILE"):
         pass
 
 
+# The three finalists from the blind voice bake-off (scripts/voices.py), as a VOICE_CHOICES value.
+BAKEOFF_VOICES = (
+    '[{"id": "630ed21c-2c5c-41cf-9d82-10a7fd668370", "name": "Corey", "vibe": "Cheerful, easygoing"},'
+    ' {"id": "30894953-bcce-41fe-892c-15ce19c843ff", "name": "Parker", "vibe": "Warm, supportive"},'
+    ' {"id": "e8e5fffb-252c-436d-b842-8879b84445b6", "name": "Cathy", "vibe": "Friendly, relaxed"}]'
+)
+
+
 def _env(name: str, default: str = "") -> str:
     """Read an env var, treating a stray inline comment as empty.
 
@@ -104,13 +112,9 @@ class Settings:
     # #6: a deeper, model-driven look at the week after Gmail connects (~$0.01-0.02, once per connection).
     deep_insights: bool = field(default_factory=lambda: _env("DEEP_INSIGHTS", "1") == "1")
     deep_insights_model: str = field(default_factory=lambda: _env("DEEP_INSIGHTS_MODEL", "claude-sonnet-5"))
-    # Voices offered in the naming step (#4). Cartesia IDs from the blind bake-off.
-    voice_choices_json: str = field(default_factory=lambda: _env(
-        "VOICE_CHOICES",
-        '[{"id": "630ed21c-2c5c-41cf-9d82-10a7fd668370", "name": "Corey", "vibe": "Cheerful, easygoing"},'
-        ' {"id": "30894953-bcce-41fe-892c-15ce19c843ff", "name": "Parker", "vibe": "Warm, supportive"},'
-        ' {"id": "e8e5fffb-252c-436d-b842-8879b84445b6", "name": "Cathy", "vibe": "Friendly, relaxed"}]',
-    ))
+    # Voices offered in the naming step (#4). Off by default: everyone hears TTS_VOICE_ID (Corey).
+    # To offer a choice again, set VOICE_CHOICES to BAKEOFF_VOICES (below) or your own list.
+    voice_choices_json: str = field(default_factory=lambda: _env("VOICE_CHOICES", "[]"))
 
     def voice_choices(self) -> list[dict]:
         if self.tts_provider != "cartesia" or not self.cartesia_api_key:

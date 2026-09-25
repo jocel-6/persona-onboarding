@@ -83,7 +83,11 @@ def test_voice_picker_only_accepts_offered_voices(monkeypatch):
 
     from app import runtime
 
-    s = dataclasses.replace(runtime.settings, tts_provider="cartesia", cartesia_api_key="k")
+    from app.config import BAKEOFF_VOICES
+
+    base = dataclasses.replace(runtime.settings, tts_provider="cartesia", cartesia_api_key="k", voice_choices_json="[]")
+    assert base.voice_choices() == []  # the default: one voice for everyone, no picker
+    s = dataclasses.replace(base, voice_choices_json=BAKEOFF_VOICES)
     monkeypatch.setattr(runtime, "settings", s)
     monkeypatch.setattr(main, "settings", s)
     c = TestClient(main.app)

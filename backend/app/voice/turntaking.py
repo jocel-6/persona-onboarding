@@ -14,12 +14,16 @@ answer, so it starts a turn as usual. End-of-turn detection (is the user done?)
 is Pipecat's Smart Turn v3 model, which listens to the audio, so "I'm, uh..."
 waits and "I'm Sam." responds fast.
 
-Threshold note for the README: two signals, whichever comes first.
-  * Duration: speech still going BARGE_IN_SECS (0.6s) after it started is a real
-    interruption. The design suggested ~400ms; in testing, a spoken "mhm" ran
-    close to 400ms, so 0.6s leaves margin.
-  * Words: a stop word ("wait", "actually", ...) interrupts as soon as the interim
-    transcript shows it; a transcript that's all backchannel cancels the timer.
+Words, not sound, take the floor. Background noise (a TV, a fan, a kitchen) trips
+voice-activity detection all the time; if raw sound could start a turn, the agent got
+cut off mid-sentence, or a reply it was still writing got thrown away, before the user
+had said a thing. So a turn starts only once the transcriber hears real words:
+  * a stop word ("wait", "actually", ...) interrupts as soon as the interim shows it;
+  * two or more non-backchannel words interrupt;
+  * one unknown word interrupts if speech is still going BARGE_IN_SECS (0.6s) after it
+    started ("Maya..." keeps going; a cough transcribed as "a" doesn't). A spoken
+    "mhm" ran close to 400ms in testing, so 0.6s leaves margin;
+  * all-backchannel transcripts ("mhm", "yeah") never interrupt while it talks.
 """
 
 from __future__ import annotations
@@ -98,14 +102,15 @@ def strip_leading_backchannels(text: str) -> str:
 class BackchannelAwareStartStrategy(BaseUserTurnStartStrategy):
     """Starts a user turn, ignoring listening noises while the agent is talking.
 
-    Agent silent: voice activity starts the turn right away (fast, like Pipecat's
-    default). Agent speaking: wait for the words and apply classify_barge_in.
+    Agent silent: the first transcribed words start the turn. Agent speaking: the words
+    must be a real interruption (classify_barge_in). Voice activity alone never starts a
+    turn; it only times how long an ambiguous single word keeps going.
     """
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._bot_speaking = False
-        self._heard_backchannel = False
+        self._heard_word = False  # an "undecided" word: real speech, not yet a clear interruption
         self._barge_timer: asyncio.Task | None = None
         self.backchannels_ignored = 0
 
@@ -121,7 +126,7 @@ class BackchannelAwareStartStrategy(BaseUserTurnStartStrategy):
 
     async def _barge_in_after_delay(self):
         await asyncio.sleep(BARGE_IN_SECS)
-        if self._bot_speaking and not self._heard_backchannel:
+        if self._bot_speaking and self._heard_word:
             await self.trigger_user_turn_started()
 
     async def process_frame(self, frame: Frame) -> ProcessFrameResult:
@@ -131,26 +136,26 @@ class BackchannelAwareStartStrategy(BaseUserTurnStartStrategy):
             self._bot_speaking = False
             await self._cancel_barge_timer()
         elif isinstance(frame, VADUserStartedSpeakingFrame):
-            if not self._bot_speaking:
-                await self.trigger_user_turn_started()
-                return ProcessFrameResult.STOP
-            # Agent is talking: interrupt if this keeps going past a backchannel's length.
-            self._heard_backchannel = False
-            await self._cancel_barge_timer()
-            self._barge_timer = asyncio.create_task(self._barge_in_after_delay())
+            # Sound alone is not a turn (it may be the TV). While the agent talks, time it:
+            # if it turns out to be a word that keeps going, that's an interruption.
+            if self._bot_speaking:
+                self._heard_word = False
+                await self._cancel_barge_timer()
+                self._barge_timer = asyncio.create_task(self._barge_in_after_delay())
         elif isinstance(frame, VADUserStoppedSpeakingFrame):
             await self._cancel_barge_timer()
         elif isinstance(frame, (TranscriptionFrame, InterimTranscriptionFrame)):
             if not self._bot_speaking:
-                await self.trigger_user_turn_started()
-                return ProcessFrameResult.STOP
+                if _WORD_RE.search(frame.text.lower()):
+                    await self.trigger_user_turn_started()
+                    return ProcessFrameResult.STOP
+                return ProcessFrameResult.CONTINUE
             verdict = classify_barge_in(frame.text)
             if verdict == "interrupt":
                 await self._cancel_barge_timer()
                 await self.trigger_user_turn_started()
                 return ProcessFrameResult.STOP
-            if verdict == "backchannel":
-                self._heard_backchannel = True
+            self._heard_word = verdict == "undecided" and bool(_WORD_RE.search(frame.text.lower()))
             if verdict == "backchannel" and isinstance(frame, TranscriptionFrame):
                 # Final "mhm": drop it so it isn't glued onto the next real turn.
                 self.backchannels_ignored += 1

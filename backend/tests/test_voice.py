@@ -230,3 +230,61 @@ def test_a_confirmed_speculation_cut_off_by_more_speech_carries_over(monkeypatch
 
     asyncio.run(go())
     assert bs._carryover == "I'm Jordan, and what I need is"
+
+
+def test_background_noise_never_takes_the_floor(monkeypatch):
+    """Sound without words (a TV, a fan) must not cut the agent off or start a turn."""
+    from pipecat.frames.frames import (
+        BotStartedSpeakingFrame,
+        InterimTranscriptionFrame,
+        VADUserStartedSpeakingFrame,
+    )
+
+    from app.voice import turntaking as tt
+
+    monkeypatch.setattr(tt, "BARGE_IN_SECS", 0.05)
+    strat = tt.BackchannelAwareStartStrategy()
+    started = []
+
+    async def trigger():
+        started.append(True)
+
+    strat.trigger_user_turn_started = trigger
+
+    def interim(text):
+        return InterimTranscriptionFrame(text=text, user_id="u", timestamp="0")
+
+    async def go():
+        # Agent thinking (not speaking yet): noise alone must not throw its reply away.
+        await strat.process_frame(VADUserStartedSpeakingFrame())
+        await strat.process_frame(interim(""))
+        assert not started
+        # Agent speaking: long noise with no words keeps it talking.
+        await strat.process_frame(BotStartedSpeakingFrame())
+        await strat.process_frame(VADUserStartedSpeakingFrame())
+        await asyncio.sleep(0.1)
+        assert not started
+        # ...and "mhm" still doesn't interrupt, but a real word that keeps going does.
+        await strat.process_frame(interim("mhm"))
+        await strat.process_frame(VADUserStartedSpeakingFrame())
+        await strat.process_frame(interim("Maya"))
+        await asyncio.sleep(0.1)
+        assert started == [True]
+
+    asyncio.run(go())
+
+
+def test_words_start_a_turn_when_the_agent_is_quiet():
+    from pipecat.frames.frames import InterimTranscriptionFrame
+
+    from app.voice.turntaking import BackchannelAwareStartStrategy
+
+    strat = BackchannelAwareStartStrategy()
+    started = []
+
+    async def trigger():
+        started.append(True)
+
+    strat.trigger_user_turn_started = trigger
+    asyncio.run(strat.process_frame(InterimTranscriptionFrame(text="hi", user_id="u", timestamp="0")))
+    assert started

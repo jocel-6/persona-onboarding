@@ -41,6 +41,8 @@ export type SessionState = {
   week_summary: WeekSummary | null;
   tomorrow: Tomorrow | null;
   pending_event: CalendarEvent | null;
+  pending_draft: { to_name: string; subject: string; body: string } | null;
+  saved_drafts: { to_name: string; subject: string; demo: boolean }[];
   added_events: CalendarEvent[];
   transcript: Turn[];
 };
@@ -125,6 +127,8 @@ export type EventType =
   | "graduate"
   | "event_confirmed"
   | "event_cancelled"
+  | "draft_confirmed"
+  | "draft_cancelled"
   | "resumed";
 
 export type Config = {
@@ -193,6 +197,14 @@ export async function addInsightFix(id: string, insightId: string): Promise<Sess
   const r = await fetch(`${API_URL}/api/sessions/${id}/insights/${insightId}/add`, { method: "POST" });
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Couldn't set that up.");
+  return body.state as SessionState;
+}
+
+/** #8: Persona writes a reply for editing. Nothing is saved until the user taps Save. */
+export async function draftReply(id: string, insightId: string): Promise<SessionState> {
+  const r = await fetch(`${API_URL}/api/sessions/${id}/insights/${insightId}/draft`, { method: "POST" });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Couldn't write a draft.");
   return body.state as SessionState;
 }
 

@@ -905,3 +905,17 @@ button.link:hover {
   background: color-mix(in srgb, var(--brand) 18%, var(--surface));
   color: var(--brand);
 }
+
+.draft-card textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  font: inherit;
+  line-height: 1.45;
+}
+.draft-card {
+  border-left: 3px solid var(--user-bubble);
+}

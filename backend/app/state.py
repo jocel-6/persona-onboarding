@@ -74,6 +74,9 @@ class OnboardingState(BaseModel):
     week_summary: dict[str, Any] | None = None  # counts only, for the living profile
     tomorrow: dict[str, Any] | None = None  # "tomorrow at a glance" card (their own events, shown to them)  # offered a non-obvious "I bet..." problem from what they said
     pending_event: dict[str, Any] | None = None
+    # #8: a reply Persona drafted, waiting for their "Save to Gmail drafts" tap; never sent.
+    pending_draft: dict[str, Any] | None = None
+    saved_drafts: list[dict[str, Any]] = Field(default_factory=list)
     added_events: list[dict[str, Any]] = Field(default_factory=list)
 
     # Wrap-up: after they accept graduation, tailored starters + tips + "any questions?"
@@ -121,4 +124,7 @@ class OnboardingState(BaseModel):
 
     def public_view(self) -> dict[str, Any]:
         """What the browser is allowed to see: no raw API history, no tokens."""
-        return self.model_dump(exclude={"messages", "pending_tool_results", "pending_notes", "account_snapshot"})
+        view = self.model_dump(exclude={"messages", "pending_tool_results", "pending_notes", "account_snapshot"})
+        if view.get("pending_draft"):  # addresses and thread ids stay server-side
+            view["pending_draft"] = {k: view["pending_draft"].get(k) for k in ("to_name", "subject", "body")}
+        return view

@@ -9,6 +9,7 @@
   GET    /api/voices/{voice_id}/sample  "Hi, I'm <name>!" in that voice, for the picker
   POST   /api/sessions/{id}/voice       pick the agent's voice
   POST   /api/sessions/{id}/insights/{insight_id}/add   turn a finding's fix into a confirm card
+  POST   /api/sessions/{id}/insights/{insight_id}/draft draft a reply (shown for editing; saved only on a tap)
   POST   /api/offer, PATCH /api/offer   WebRTC signaling for the voice call
   GET    /api/google/start, /callback   Google sign-in popup (read-only calendar + email headers)
 
@@ -85,7 +86,7 @@ OPENERS = [
 # Events that, during a live voice call, should be spoken on the call rather than texted.
 SPOKEN_DURING_CALL = {
     "gmail_connected", "gmail_closed", "gmail_denied", "gmail_popup_opened", "graduate",
-    "event_confirmed", "event_cancelled",
+    "event_confirmed", "event_cancelled", "draft_confirmed", "draft_cancelled",
 }
 
 
@@ -169,6 +170,37 @@ async def _deep_insights_later(session_id: str) -> None:
 
     if call := active_calls.get(session_id):
         await call.brain_svc._send({"type": "state", "state": state.public_view()})
+
+
+async def _save_pending_draft(session_id: str, edited_body: str) -> str:
+    """The user tapped Save: put the (possibly edited) reply in their Gmail drafts. Never sends."""
+    import httpx
+
+    async with runtime.locks[session_id]:
+        state = _load(session_id)
+        d = state.pending_draft
+        if not d:
+            return "none"
+        if edited_body.strip():
+            d["body"] = edited_body.strip()[:4000]
+            store.save(state)
+    if state.gmail_demo or settings.gmail_stub or not d.get("to_email"):
+        return "demo_saved"
+    tokens = store.get_tokens(session_id)
+    if not tokens or not google.can_create_drafts(tokens):
+        return "needs_permission"
+    try:
+        tokens = await google.fresh_access_token(settings.google_client_id, settings.google_client_secret, tokens)
+        store.save_tokens(session_id, tokens)
+        await google.create_draft(tokens["access_token"], d)
+        log.info("draft saved for session %s", session_id[:8])
+        return "saved"
+    except httpx.HTTPStatusError as e:
+        log.warning("draft save failed for session %s: HTTP %s", session_id[:8], e.response.status_code)
+        return "needs_permission" if e.response.status_code in (401, 403) else "error"
+    except httpx.HTTPError:
+        log.exception("draft save failed for session %s", session_id[:8])
+        return "error"
 
 
 async def _add_pending_event(session_id: str) -> str:
@@ -379,6 +411,42 @@ async def pick_voice(session_id: str, body: VoiceIn) -> dict[str, Any]:
         return {"state": state.public_view()}
 
 
+@app.post("/api/sessions/{session_id}/insights/{insight_id}/draft")
+async def insight_draft(session_id: str, insight_id: str) -> dict[str, Any]:
+    """#8: write a reply for someone waiting on the user. Shown for editing; nothing is saved yet."""
+    from .drafts import write_draft
+
+    state = _load(session_id)
+    ins = next((i for i in state.insights if i.get("id") == insight_id), None)
+    action = (ins or {}).get("action") or {}
+    emails = (state.account_snapshot or {}).get("emails", [])
+    idx = action.get("email_index")
+    if action.get("type") != "draft_reply" or not isinstance(idx, int) or not 0 <= idx < len(emails):
+        raise HTTPException(404, "nothing to reply to for that finding")
+    email = emails[idx]
+    subject = email["subject"]
+    try:
+        text = await write_draft(
+            brain.client, settings.llm_model, to_name=email.get("from") or "there", subject=subject,
+            user_name=state.user_name, suggested_time=action.get("suggested_time"),
+        )
+    except Exception:  # noqa: BLE001 - a failed draft is just "try again", never an error dump
+        log.exception("draft failed for session %s", session_id[:8])
+        raise HTTPException(502, "couldn't write a draft right now")
+    async with runtime.locks[session_id]:
+        state = _load(session_id)
+        state.pending_draft = {
+            "to_name": email.get("from") or "",
+            "to_email": email.get("from_email"),
+            "subject": subject if subject.lower().startswith("re:") else f"Re: {subject}",
+            "body": text,
+            "thread_id": email.get("thread_id"),
+            "in_reply_to": email.get("message_id"),
+        }
+        store.save(state)
+        return {"state": state.public_view()}
+
+
 @app.post("/api/sessions/{session_id}/messages")
 async def post_message(session_id: str, body: MessageIn) -> StreamingResponse:
     _load(session_id)
@@ -392,6 +460,8 @@ async def post_event(session_id: str, body: EventIn) -> StreamingResponse:
         await _revoke_google(session_id)
     if body.type == "event_confirmed":
         body.data["result"] = await _add_pending_event(session_id)
+    if body.type == "draft_confirmed":
+        body.data["result"] = await _save_pending_draft(session_id, str(body.data.get("body") or ""))
     if body.type == "gmail_connected" and settings.deep_insights:
         asyncio.create_task(_deep_insights_later(session_id))
     if body.type == "hangup":

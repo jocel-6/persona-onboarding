@@ -34,6 +34,8 @@ SCOPES = [
     "profile",
     "https://www.googleapis.com/auth/calendar.events",
     "https://www.googleapis.com/auth/gmail.metadata",
+    # Create drafts only (#8). Persona never sends: drafts land in their Gmail for them to send.
+    "https://www.googleapis.com/auth/gmail.compose",
 ]
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -112,6 +114,37 @@ def granted_all_scopes(token: dict[str, Any]) -> list[str]:
 
 
 WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.events"
+DRAFT_SCOPE = "https://www.googleapis.com/auth/gmail.compose"
+
+
+def can_create_drafts(token: dict[str, Any]) -> bool:
+    return DRAFT_SCOPE in (token.get("scope") or "").split()
+
+
+async def create_draft(access_token: str, draft: dict[str, Any]) -> dict[str, Any]:
+    """Save a reply as a Gmail draft in the right thread. Never sends."""
+    import base64
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["To"] = draft["to_email"]
+    msg["Subject"] = draft["subject"]
+    if draft.get("in_reply_to"):
+        msg["In-Reply-To"] = draft["in_reply_to"]
+        msg["References"] = draft["in_reply_to"]
+    msg.set_content(draft["body"])
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+    body: dict[str, Any] = {"message": {"raw": raw}}
+    if draft.get("thread_id"):
+        body["message"]["threadId"] = draft["thread_id"]
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.post(
+            "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
+            json=body,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        r.raise_for_status()
+        return r.json()
 
 
 def can_add_events(token: dict[str, Any]) -> bool:
@@ -240,7 +273,7 @@ async def fetch_snapshot(access_token: str) -> dict[str, Any]:
                 try:
                     msg = await _get(
                         c, f"{GMAIL_URL}/{mid}", access_token,
-                        {"format": "metadata", "metadataHeaders": ["Subject", "From", "Date"]},
+                        {"format": "metadata", "metadataHeaders": ["Subject", "From", "Date", "Message-ID"]},
                     )
                 except httpx.HTTPError:
                     return None
@@ -248,7 +281,13 @@ async def fetch_snapshot(access_token: str) -> dict[str, Any]:
                 subject, sender = h.get("subject", "").strip(), _sender_name(h.get("from", ""))
                 if not subject or is_private(subject) or is_private(sender):
                     return None
-                return {"subject": subject[:100], "from": sender[:40]}
+                # Address, thread and Message-ID stay server-side; they're only for replying in-thread.
+                addr = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", h.get("from", ""))
+                return {
+                    "subject": subject[:100], "from": sender[:40],
+                    "from_email": addr.group(0) if addr else None,
+                    "thread_id": msg.get("threadId"), "message_id": h.get("message-id"),
+                }
 
             results = await asyncio.gather(*(one(i) for i in ids))
             snap["emails"] = [r for r in results if r][:MAX_SUBJECTS]
@@ -307,7 +346,8 @@ def demo_snapshot(now: datetime | None = None, tz_name: str | None = None) -> di
         ],
         "emails": [
             {"subject": "Field trip permission slip due Friday", "from": "Lincoln Elementary"},
-            {"subject": "Re: Saturday plans?", "from": "Jordan"},
+            {"subject": "Re: Saturday plans?", "from": "Jordan", "from_email": "jordan@example.com",
+             "thread_id": "demo-thread-jordan", "message_id": "<demo-jordan@example.com>"},
             {"subject": "Your order has shipped", "from": "Hollow Pines Outfitters"},
             {"subject": "Book club: this month's pick", "from": "Priya"},
             {"subject": "Volunteer sign-up for the bake sale", "from": "PTA"},

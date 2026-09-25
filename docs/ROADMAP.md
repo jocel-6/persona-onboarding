@@ -22,7 +22,7 @@ Ideas beyond the take-home spec, chosen to make the consumer experience better a
 |---|---|---|---|
 | 6 | **Deep-thinking pass in the background.** A stronger model reasons over the whole week while the conversation continues and finds connections rules can't ("the field trip Friday lands on your planning day; want me to ask Sam to cover pickup?"). | Insights that feel eerily smart | ✅ |
 | 7 | **Fixes that solve the problem.** Free-slot finding for conflicts, focus blocks, rescheduling suggestions. Always proposed, always confirmed. | It fixes, not just flags | ✅ |
-| 8 | **Draft replies (never send).** "Jordan's waiting on you; here's a draft" → saved to Gmail drafts only when the user taps Save draft. | The strongest "it's already working" moment | ⬜ |
+| 8 | **Draft replies (never send).** "Jordan's waiting on you; here's a draft" → saved to Gmail drafts only when the user taps Save draft. | The strongest "it's already working" moment | ✅ |
 | 9 | **Tomorrow at a glance.** A card at the end: tomorrow as Persona sees it, plus the one thing to watch. | What daily life with Persona feels like | ✅ |
 
 ## C. Make it look and feel premium

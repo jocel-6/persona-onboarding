@@ -320,3 +320,57 @@ def test_deep_insights_are_grounded_structured_and_merged_first(monkeypatch):
     s.deep_insights = found
     orch.refresh_insights(s)
     assert s.insights[0]["kind"] == "deep" and any(i["kind"] == "conflict" for i in s.insights)
+
+
+def test_draft_reply_is_written_shown_and_saved_only_on_tap(monkeypatch):
+    from types import SimpleNamespace as NS
+
+    real = dataclasses.replace(runtime.settings, gmail_stub=False, google_client_id="cid", google_client_secret="sec")
+    monkeypatch.setattr(runtime, "settings", real)
+    monkeypatch.setattr(main, "settings", real)
+
+    class FakeCreate:
+        async def create(self, **kw):
+            assert "Saturday plans?" in kw["messages"][0]["content"] and "Saturday 10am–12pm" in kw["messages"][0]["content"]
+            return NS(content=[NS(type="text", text="Hey Jordan, Saturday works—I'm free 10 to noon. What were you thinking?")])
+
+    saved = []
+
+    async def fake_create_draft(token, d):
+        saved.append((token, d["to_email"], d["subject"], d["thread_id"], d["body"]))
+        return {"id": "draft1"}
+
+    monkeypatch.setattr(google, "create_draft", fake_create_draft)
+    from tests.test_brain import FakeClient
+
+    fake = FakeClient([("Saved, it's in your drafts.", None, "end_turn")] * 3)
+    fake.messages = NS(create=FakeCreate().create, stream=fake.stream)
+    main.brain.client = fake
+
+    c = TestClient(main.app)
+    sid = c.post("/api/sessions", json={"tz": "America/Los_Angeles"}).json()["state"]["session_id"]
+    st = runtime.store.get(sid)
+    st.agent_name, st.user_name = "Wren", "Jo"
+    st.account_snapshot = {**google.demo_snapshot(tz_name="America/Los_Angeles"), "demo": False}
+    st.gmail_status, st.gmail = "connected", "jo@gmail.com"
+    orch.refresh_insights(st)
+    runtime.store.save(st)
+    reply = next(i for i in st.insights if i["kind"] == "reply")
+    reply["action"]["suggested_time"] = "Saturday 10am–12pm"
+    runtime.store.save(st)
+
+    view = c.post(f"/api/sessions/{sid}/insights/{reply['id']}/draft").json()["state"]["pending_draft"]
+    assert view == {"to_name": "Jordan", "subject": "Re: Saturday plans?",
+                    "body": "Hey Jordan, Saturday works, I'm free 10 to noon. What were you thinking?"}  # no em dash, no address
+    assert not saved  # nothing saved until the tap
+
+    # Connected before drafts existed: asks to reconnect, saves nothing.
+    runtime.store.save_tokens(sid, {"access_token": "at", "scope": "openid", "expires_at": 9e12})
+    c.post(f"/api/sessions/{sid}/events", json={"type": "draft_confirmed", "data": {"body": "Edited!"}})
+    assert not saved and runtime.store.get(sid).pending_draft
+
+    runtime.store.save_tokens(sid, {"access_token": "at", "scope": " ".join(google.SCOPES), "expires_at": 9e12})
+    c.post(f"/api/sessions/{sid}/events", json={"type": "draft_confirmed", "data": {"body": "Edited by me."}})
+    assert saved == [("at", "jordan@example.com", "Re: Saturday plans?", "demo-thread-jordan", "Edited by me.")]
+    st = runtime.store.get(sid)
+    assert st.pending_draft is None and st.saved_drafts[0]["to_name"] == "Jordan"

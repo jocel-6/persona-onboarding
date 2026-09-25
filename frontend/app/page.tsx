@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   API_URL,
   addInsightFix,
+  draftReply,
   pickVoice,
   voiceSampleUrl,
   createSession,
@@ -570,7 +571,12 @@ export default function Onboarding() {
                 <InsightsCard
                   insights={session.insights}
                   demo={session.gmail_demo}
-                  onFix={(i) => void addInsightFix(session.session_id, i.id).then(applyState).catch((e) => setError(String(e.message)))}
+                  onFix={(i) =>
+                    void (i.action?.type === "draft_reply"
+                      ? draftReply(session.session_id, i.id)
+                      : addInsightFix(session.session_id, i.id)
+                    ).then(applyState).catch((e) => setError(String(e.message)))
+                  }
                   onAsk={(i) => sendMessage(`Tell me more about this: ${i.headline}`)}
                   onDismiss={() => setInsightsDismissed(true)}
                 />
@@ -578,6 +584,16 @@ export default function Onboarding() {
 
             {session?.graduated && session.tomorrow && session.gmail_status === "connected" && doneDismissed &&
               callView === "none" && <TomorrowCard t={session.tomorrow} />}
+
+            {session?.pending_draft && callView === "none" && (
+              <DraftCard
+                key={session.pending_draft.body}
+                draft={session.pending_draft}
+                demo={session.gmail_demo}
+                onSave={(body) => sendEvent("draft_confirmed", { body })}
+                onCancel={() => sendEvent("draft_cancelled")}
+              />
+            )}
 
             {session?.pending_event && callView === "none" && (
               <EventConfirmCard
@@ -652,7 +668,12 @@ export default function Onboarding() {
                   compact
                   insights={session.insights}
                   demo={session.gmail_demo}
-                  onFix={(i) => void addInsightFix(session.session_id, i.id).then(applyState).catch(() => {})}
+                  onFix={(i) =>
+                    void (i.action?.type === "draft_reply"
+                      ? draftReply(session.session_id, i.id)
+                      : addInsightFix(session.session_id, i.id)
+                    ).then(applyState).catch(() => {})
+                  }
                   onAsk={(i) => sendMessage(`Tell me more about this: ${i.headline}`)}
                 />
               )}
@@ -1201,10 +1222,8 @@ function InsightsCard({
             <p className="insight-headline">{i.headline}</p>
             {!compact && <p className="small muted insight-detail">{i.detail}</p>}
             <div className="row">
-              {(i.action?.type === "add_event" || i.action?.type === "move_event") && (
-                <button className="primary small" onClick={() => onFix(i)}>
-                  {i.action.type === "move_event" ? "Move it" : i.kind === "packed" ? "Block it" : "Add to calendar"}
-                </button>
+              {i.action && (
+                <FixButton insight={i} onFix={onFix} />
               )}
               <button className="ghost small" onClick={() => onAsk(i)}>
                 Tell me more
@@ -1220,6 +1239,61 @@ function InsightsCard({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function FixButton({ insight, onFix }: { insight: Insight; onFix: (i: Insight) => void }) {
+  const [busy, setBusy] = useState(false);
+  const type = insight.action?.type;
+  const label =
+    type === "draft_reply" ? "Draft a reply" : type === "move_event" ? "Move it" : insight.kind === "packed" ? "Block it" : "Add to calendar";
+  return (
+    <button
+      className="primary small"
+      disabled={busy}
+      onClick={() => {
+        setBusy(true);
+        onFix(insight);
+        setTimeout(() => setBusy(false), type === "draft_reply" ? 4000 : 800);
+      }}
+    >
+      {busy && type === "draft_reply" ? "Writing…" : label}
+    </button>
+  );
+}
+
+/** #8: an editable reply. Saved to Gmail drafts only on the tap; Persona never sends. */
+function DraftCard({
+  draft,
+  demo,
+  onSave,
+  onCancel,
+}: {
+  draft: { to_name: string; subject: string; body: string };
+  demo: boolean;
+  onSave: (body: string) => void;
+  onCancel: () => void;
+}) {
+  const [body, setBody] = useState(draft.body);
+  return (
+    <div className="card draft-card">
+      <div>
+        <p className="small muted" style={{ margin: 0 }}>
+          Reply to {draft.to_name}
+        </p>
+        <strong>{draft.subject}</strong>
+      </div>
+      <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} aria-label="Draft reply" />
+      <div className="row">
+        <button className="primary" onClick={() => onSave(body)}>
+          Save to {demo ? "demo " : "Gmail "}drafts
+        </button>
+        <button className="ghost" onClick={onCancel}>
+          Not now
+        </button>
+      </div>
+      <p className="small muted" style={{ margin: 0 }}>It&apos;s saved as a draft for you to send. Persona never sends email.</p>
     </div>
   );
 }

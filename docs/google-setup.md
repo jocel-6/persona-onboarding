@@ -22,6 +22,7 @@ Google renames its console menus now and then. If a label below doesn't match, t
    - `openid`, `.../auth/userinfo.email`, `.../auth/userinfo.profile`
    - `https://www.googleapis.com/auth/calendar.events` (read events, and add ones the user confirms on screen)
    - `https://www.googleapis.com/auth/gmail.metadata`
+   - `https://www.googleapis.com/auth/gmail.compose` (create drafts only, saved when the user taps Save; Persona never sends)
 
    `gmail.metadata` reads headers only (subject, sender, date), never message bodies, which is why Persona uses it. Google lists it as a "restricted" scope; that's fine in Testing mode.
 5. **Test users / Audience → Add users:** add your Google account and every tester's account. Only these accounts can sign in while the app is in Testing mode (up to 100). **Ask the recruiter which Google accounts the testers will use.**
@@ -53,7 +54,7 @@ Restart `./dev.sh`. The app switches from the stand-in to real Google sign-in au
 ## What happens with the data
 - Persona reads the next ~10 calendar events and ~20 recent inbox subject lines, once, right after you connect. Anything that looks medical, financial, or otherwise private is filtered out before the model sees it.
 - Tokens are stored only on the server (a separate table, never in the browser or sent to the model), and are revoked and deleted when you click **Disconnect** or the session is reset.
-- The only thing Persona ever writes is a calendar event you approve by tapping **Add** on its confirm card. Nothing is sent, edited, or deleted. Email contents are never read or logged.
+- The only things Persona ever writes are ones you approve on screen: a calendar event (**Add**/**Move**) or a reply saved to your Gmail drafts (**Save**). Nothing is sent, edited, or deleted. Email contents are never read or logged.
 
 ## Troubleshooting
 | You see | Why | Fix |

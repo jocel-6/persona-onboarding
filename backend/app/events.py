@@ -27,6 +27,8 @@ EventType = Literal[
     "graduate",
     "event_confirmed",
     "event_cancelled",
+    "draft_confirmed",
+    "draft_cancelled",
     "resumed",
 ]
 
@@ -213,6 +215,35 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
             f"adding {ev['title']!r} didn't go through just now. Don't read out errors; say it didn't save and "
             "offer to try again in a moment."
         ), ui
+
+    if t == "draft_confirmed":
+        d = state.pending_draft
+        if not d:
+            return None, ui
+        result = str(data.get("result") or "error")
+        if result in ("saved", "demo_saved"):
+            state.pending_draft = None
+            state.saved_drafts.append({"to_name": d["to_name"], "subject": d["subject"], "demo": result == "demo_saved"})
+            orch.add_event_turn(state, f"Draft saved: reply to {d['to_name']}")
+            where = "the demo drafts" if result == "demo_saved" else "their Gmail drafts"
+            return (
+                f"they tapped Save: the reply to {d['to_name']} is in {where}, ready for them to send. "
+                "Confirm in one short line; remind them you never send anything yourself."
+            ), ui
+        if result == "needs_permission":
+            state.gmail_card_shown = True
+            ui.append({"type": "show_gmail_card"})
+            return (
+                "saving the draft didn't go through because their Google connection predates drafts. Ask them to "
+                "tap Connect Gmail once more to allow saving drafts, then save again. One or two light sentences."
+            ), ui
+        return "saving the draft didn't go through just now. Don't read out errors; offer to try again.", ui
+
+    if t == "draft_cancelled":
+        d, state.pending_draft = state.pending_draft, None
+        if not d:
+            return None, ui
+        return f"they set the draft to {d['to_name']} aside. No problem; one short line, move on.", ui
 
     if t == "event_cancelled":
         ev, state.pending_event = state.pending_event, None

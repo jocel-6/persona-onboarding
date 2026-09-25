@@ -180,7 +180,7 @@ True product facts (claims matching these are NOT made up):
 - "Connect Gmail" grants read-only access to upcoming Google Calendar events and to the subject/sender/date of recent emails. It cannot read email bodies. Nothing is sent, changed, or deleted.
 - Items that look medical, financial, or private are filtered out in code before the assistant sees them.
 - Access is stored on Persona's server and can be disconnected anytime (revoked with Google).
-- In conversation the assistant can give ideas, suggestions, and drafts right away; it can't take actions in accounts (send, book, set reminders) during onboarding.
+- In conversation the assistant can give ideas, suggestions, and drafts right away. During onboarding it can't take actions in accounts yet. Offering what it WILL do once set up ("once you're connected I can remind you before it's due", "want me to flag that?") is the product working as intended, NOT made up. The failure is claiming something is already done or happening now ("reminder set", "locked in", "I've added it").
 - The screen shows tappable starter suggestions after wrap-up, and a Connect Gmail card with a "Google will show a warning" tip.
 """
 
@@ -426,7 +426,13 @@ async def main() -> None:
     jobs = [(p, m) for m in models for p in personas]
 
     ledger = Ledger(RESULTS / "spend.json")
-    projected = len(jobs) * EST_COST_PER_CONVERSATION
+    # Estimate from what past runs actually cost (with margin); the flat guess until there's history.
+    past = [r for r in ledger.data["runs"] if r.get("conversations")]
+    per_convo = (
+        max(0.08, 1.5 * sum(r["usd"] for r in past) / sum(r["conversations"] for r in past))
+        if past else EST_COST_PER_CONVERSATION
+    )
+    projected = len(jobs) * per_convo
     if ledger.total + projected > BUDGET:
         raise SystemExit(
             f"Budget: ${ledger.total:.2f} spent so far + ~${projected:.2f} projected would pass the "

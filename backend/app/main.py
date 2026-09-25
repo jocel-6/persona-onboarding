@@ -6,6 +6,7 @@
   POST   /api/sessions/{id}/events      app event (call, hangup, Gmail, resume) -> SSE stream
   DELETE /api/sessions/{id}             forget the session
   POST   /api/sessions/{id}/fields      fix a field from the recap (validated, no model call)
+  POST   /api/sessions/{id}/insights/{insight_id}/add   turn a finding's fix into a confirm card
   POST   /api/offer, PATCH /api/offer   WebRTC signaling for the voice call
   GET    /api/google/start, /callback   Google sign-in popup (read-only calendar + email headers)
 
@@ -275,6 +276,25 @@ async def edit_field(session_id: str, body: FieldEditIn) -> dict[str, Any]:
         return {"state": state.public_view()}
 
 
+@app.post("/api/sessions/{session_id}/insights/{insight_id}/add")
+async def insight_add(session_id: str, insight_id: str) -> dict[str, Any]:
+    """One tap on a finding's fix. Still only proposes: the confirm card's Add does the write."""
+    from . import validation
+
+    async with runtime.locks[session_id]:
+        state = _load(session_id)
+        ins = next((i for i in state.insights if i.get("id") == insight_id), None)
+        action = (ins or {}).get("action") or {}
+        if action.get("type") != "add_event":
+            raise HTTPException(404, "nothing to add for that finding")
+        event, reason = validation.check_event(action["event"], state.user_tz)
+        if event is None:
+            raise HTTPException(422, reason)
+        state.pending_event = event
+        store.save(state)
+        return {"state": state.public_view()}
+
+
 @app.post("/api/sessions/{session_id}/messages")
 async def post_message(session_id: str, body: MessageIn) -> StreamingResponse:
     _load(session_id)
@@ -442,6 +462,9 @@ async def google_callback(state: str = "", code: str = "", error: str = ""):
         st.gmail_demo = False
         st.gmail_status = "connected"
         st.google_result = "ok"
+        from . import orchestrator as orch
+
+        orch.refresh_insights(st)
         store.save(st)
     log.info(
         "Google connected for session %s: %d events, %d subjects",

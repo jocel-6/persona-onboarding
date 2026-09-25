@@ -61,6 +61,7 @@ flowchart LR
 | Tool call inside the main response | No extra latency; model talks and saves in one pass | Separate extraction pass (+300 ms), JSON-then-speech (delays audio) |
 | `gmail.metadata` scope | Headers only: "we never read your email" is enforced by Google, not promised | `gmail.readonly`: reads bodies, restricted-scope review |
 | Calendar writes are propose → confirm card → user tap | "Nothing happens without your yes" enforced by code: the model can only propose; the server writes only on the tap | Letting the model call the Calendar API directly |
+| Proactive findings detected in code, phrased by the model | Detection is free, instant, deterministic and testable; the model does the human part (pick the most relevant, say it naturally, offer the fix) | Asking the model to "find problems" in raw data: slower, costlier, can invent findings |
 | Snapshot once, filtered in code | Short, cheap notes; medical/financial/private items never reach the model | Live Gmail queries per turn: slower, more surface area |
 | Only the OAuth callback can mark Gmail connected; browser polls | A client can't claim a connection; Google's COOP headers break popup→opener messaging | Trusting a postMessage from the popup |
 | Deterministic guarantees for skip, Gmail refusal, user-intent fields | Things users must never repeat shouldn't depend on the model remembering | Prompt-only |

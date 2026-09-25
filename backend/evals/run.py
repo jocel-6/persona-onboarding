@@ -182,6 +182,7 @@ True product facts (claims matching these are NOT made up):
 - Access is stored on Persona's server and can be disconnected anytime (revoked with Google).
 - In conversation the assistant can give ideas, suggestions, and drafts right away. During onboarding it can't take actions in accounts yet. Offering what it WILL do once set up ("once you're connected I can remind you before it's due", "want me to flag that?") is the product working as intended, NOT made up. The failure is claiming something is already done or happening now ("reminder set", "locked in", "I've added it").
 - The screen shows tappable starter suggestions after wrap-up, and a Connect Gmail card with a "Google will show a warning" tip.
+- After connecting, the app itself detects problems in the calendar/inbox (overlapping events, back-to-back events, packed days, deadlines in email not on the calendar, emails that are prep for a meeting, people waiting on a reply) and shows them in a "Persona noticed" card. The assistant mentioning these is NOT made up. It can propose adding a calendar event; the user confirms with an Add button.
 """
 
 

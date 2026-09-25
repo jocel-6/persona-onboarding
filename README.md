@@ -111,6 +111,15 @@ The user signs in with Google in a popup, mid-call if they like, while the conve
 
 - **Adding to the calendar, only with a yes:** "add a park picnic Saturday at 2" makes the agent *propose* an event (validated in code, resolved in the user's timezone). A confirm card shows "Park picnic · Sat Sep 26, 2–3pm · Add / Not now", on screen and mid-call. Only the tap writes to Google Calendar, from the server; the model has no way to add anything itself. People who connected before this permission existed are asked to reconnect once.
 
+## Persona noticed: problems you didn't know you had
+
+Persona's pitch is solving problems before you ask, so onboarding shows it off:
+
+- **A hunch from your life:** once it understands your situation (before any data), it names one non-obvious problem that usually comes with it, as a friendly guess, with how it'd handle it.
+- **Findings from your calendar and inbox** (`backend/app/insights.py`): plain code, so it's free per user, instant, deterministic, and tested. It detects overlapping events, back-to-backs with no breathing room, packed days, **deadlines that are in your email but not on your calendar**, emails that are clearly prep for an upcoming meeting, and people waiting on a reply. Findings are ranked by severity, how soon, and relevance to what you said you need help with.
+- **The wow moment:** Claude gets the ranked findings in the director's note and leads with the most surprising one like a friend who just spotted it ("oh, heads up, your conference Thursday runs right into soccer pickup"), then offers the fix. A **Persona noticed** card shows the top three with one-tap fixes (**Add to calendar** opens the confirm card; nothing is added without the tap).
+- The demo account is a realistic week seeded with exactly these problems, so reviewers without Google access see the full effect.
+
 ## Recap (Phase 4)
 
 After a call ends, and at graduation, a card shows what the agent got: its own name, the user's name, what they need help with, Gmail status, and what it'll do first. Missing items say so plainly ("Not yet. I'll ask."). Every item has **Edit**: fixes go through the same validation as everything else (no model call), show up in the chat, and the agent hears about them on its next turn. The "You're in" screen reuses the same rows plus tappable starter suggestions.

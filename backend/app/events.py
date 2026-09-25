@@ -128,6 +128,7 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
         state.gmail_status = "connected"
         state.gmail_card_shown = False
         state.value_moment_done = False
+        orch.refresh_insights(state)
         state.turns_since_progress = 0
         orch.add_event_turn(state, "Demo data connected" if state.gmail_demo else "Gmail connected")
         ui.append({"type": "hide_gmail_card"})
@@ -139,6 +140,7 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
         return "the user just connected Gmail. Confirm it warmly in a few words, then continue.", ui
 
     if t == "gmail_disconnected":
+        state.insights = []
         state.gmail_status = "not_connected"
         state.gmail = None
         state.gmail_demo = False
@@ -178,7 +180,10 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
             state.pending_event = None
             state.added_events.append({**ev, "demo": result == "demo_added"})
             if state.account_snapshot is not None:
-                state.account_snapshot.setdefault("events", []).append({"title": ev["title"], "start": ev["start"]})
+                state.account_snapshot.setdefault("events", []).append(
+                    {"title": ev["title"], "start": ev["start"], "end": ev["end"]}
+                )
+                orch.refresh_insights(state)  # a fixed problem drops off the list
             orch.add_event_turn(state, f"Added to calendar: {ev['title']}, {ev['when']}")
             ui.append({"type": "event_added", "event": ev})
             where = "the demo calendar" if result == "demo_added" else "their calendar"

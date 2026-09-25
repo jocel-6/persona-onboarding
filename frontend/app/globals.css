@@ -639,3 +639,56 @@ button.link:hover {
   width: 100%;
   border-left: 3px solid var(--user-bubble);
 }
+
+.insights {
+  text-align: left;
+  width: 100%;
+}
+.insights-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.insights ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.insights li {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.insight-headline {
+  margin: 6px 0 2px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.insight-detail {
+  margin: 0 0 8px;
+}
+.tag-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.tag-pill.conflict,
+.tag-pill.deadline {
+  background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+  color: var(--bad);
+}
+.tag-pill.prep,
+.tag-pill.reply {
+  background: color-mix(in srgb, var(--user-bubble) 14%, var(--surface));
+  color: var(--user-bubble);
+}

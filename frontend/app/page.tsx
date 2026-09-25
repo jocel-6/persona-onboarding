@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   API_URL,
+  addInsightFix,
   createSession,
   deleteSession,
   editField,
@@ -16,6 +17,7 @@ import {
   type TurnLatency,
   type TurnUsage,
   type CalendarEvent,
+  type Insight,
   type UiEvent,
 } from "@/lib/api";
 import { startVoiceCall, type VoiceCall } from "@/lib/voice";
@@ -49,6 +51,7 @@ export default function Onboarding() {
   const [callView, setCallView] = useState<CallView>("none");
   const [doneDismissed, setDoneDismissed] = useState(false);
   const [recapDismissed, setRecapDismissed] = useState(false);
+  const [insightsDismissed, setInsightsDismissed] = useState(false);
   const [debug, setDebug] = useState(false);
   const [latency, setLatency] = useState<TurnLatency | null>(null);
   const [usage, setUsage] = useState<TurnUsage | null>(null);
@@ -279,6 +282,7 @@ export default function Onboarding() {
     setCallView("none");
     setDoneDismissed(false);
     setRecapDismissed(false);
+    setInsightsDismissed(false);
     setLatency(null);
     await boot(true);
   };
@@ -519,6 +523,17 @@ export default function Onboarding() {
               </div>
             )}
 
+            {session && session.gmail_status === "connected" && session.insights?.length > 0 && !insightsDismissed &&
+              callView === "none" && (
+                <InsightsCard
+                  insights={session.insights}
+                  demo={session.gmail_demo}
+                  onFix={(i) => void addInsightFix(session.session_id, i.id).then(applyState).catch((e) => setError(String(e.message)))}
+                  onAsk={(i) => sendMessage(`Tell me more about this: ${i.headline}`)}
+                  onDismiss={() => setInsightsDismissed(true)}
+                />
+              )}
+
             {session?.pending_event && callView === "none" && (
               <EventConfirmCard
                 event={session.pending_event}
@@ -584,6 +599,15 @@ export default function Onboarding() {
           onReady={session?.wrapping_up && !graduated ? () => sendEvent("graduate") : undefined}
           gmail={
             <>
+              {session && session.gmail_status === "connected" && session.insights?.length > 0 && !session.pending_event && (
+                <InsightsCard
+                  compact
+                  insights={session.insights}
+                  demo={session.gmail_demo}
+                  onFix={(i) => void addInsightFix(session.session_id, i.id).then(applyState).catch(() => {})}
+                  onAsk={(i) => sendMessage(`Tell me more about this: ${i.headline}`)}
+                />
+              )}
               {session?.pending_event && (
                 <EventConfirmCard
                   event={session.pending_event}
@@ -912,6 +936,68 @@ function CallScreen({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+const INSIGHT_LABEL: Record<Insight["kind"], string> = {
+  conflict: "Conflict",
+  tight: "No breathing room",
+  packed: "Busy day",
+  deadline: "Deadline",
+  prep: "Prep",
+  reply: "Waiting on you",
+};
+
+/** Persona noticed: problems found in their calendar and inbox, with one-tap fixes. */
+function InsightsCard({
+  insights,
+  demo,
+  compact,
+  onFix,
+  onAsk,
+  onDismiss,
+}: {
+  insights: Insight[];
+  demo: boolean;
+  compact?: boolean;
+  onFix: (i: Insight) => void;
+  onAsk: (i: Insight) => void;
+  onDismiss?: () => void;
+}) {
+  const shown = insights.slice(0, compact ? 2 : 3);
+  return (
+    <div className={`card insights ${compact ? "compact" : ""}`}>
+      <div className="insights-head">
+        <strong>Persona noticed</strong>
+        <span className="small muted">{demo ? "in the demo account" : "in your calendar and inbox"}</span>
+      </div>
+      <ul>
+        {shown.map((i) => (
+          <li key={i.id}>
+            <span className={`tag-pill ${i.kind}`}>{INSIGHT_LABEL[i.kind] ?? i.kind}</span>
+            <p className="insight-headline">{i.headline}</p>
+            {!compact && <p className="small muted insight-detail">{i.detail}</p>}
+            <div className="row">
+              {i.action?.type === "add_event" && (
+                <button className="primary small" onClick={() => onFix(i)}>
+                  Add to calendar
+                </button>
+              )}
+              <button className="ghost small" onClick={() => onAsk(i)}>
+                Tell me more
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {onDismiss && (
+        <div className="row end">
+          <button className="link small" onClick={onDismiss}>
+            Hide
+          </button>
+        </div>
+      )}
     </div>
   );
 }

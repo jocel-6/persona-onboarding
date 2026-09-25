@@ -47,7 +47,8 @@ def test_demo_data_connects_and_feeds_the_value_moment():
     text, ui = apply_event(s, "gmail_connected", {"demo": True})
     assert s.gmail_status == "connected" and s.gmail_demo and "demo" in text
     note = orch.directors_note(s, channel="voice")
-    assert "Value moment" in note and "Account snapshot" in note and "permission slip" in note
+    assert "Wow moment" in note and "Account snapshot" in note and "permission slip" in note
+    assert "Things you noticed" in note and s.insights and s.insights[0]["headline"]
     assert "account_snapshot" not in s.public_view()  # never sent to the browser
 
 
@@ -210,3 +211,54 @@ def test_tapping_add_writes_the_event_and_not_now_doesnt(monkeypatch):
     with_pending(" ".join(google.SCOPES))
     c.post(f"/api/sessions/{sid}/events", json={"type": "event_cancelled"})
     assert len(inserted) == 1 and runtime.store.get(sid).pending_event is None
+
+
+# ---------------------------------------------------------------------------
+# Persona noticed: problems they didn't know they had
+# ---------------------------------------------------------------------------
+
+
+def test_insights_find_real_problems_in_a_week():
+    from app.insights import find_insights, resolve_date
+
+    now = datetime(2026, 9, 23, 17, 0, tzinfo=google.timezone.utc)  # Wednesday 10am in LA
+    found = find_insights(google.demo_snapshot(now, "America/Los_Angeles"), tz_name="America/Los_Angeles",
+                          help_topic="school stuff", now=now, limit=10)
+    kinds = [i.kind for i in found]
+    assert {"conflict", "deadline", "prep", "reply", "packed", "tight"} <= set(kinds)
+    conflict = next(i for i in found if i.kind == "conflict")
+    assert "Parent-teacher conference runs into Soccer practice pickup" in conflict.headline
+    deadline = next(i for i in found if i.kind == "deadline")
+    assert deadline.action["event"] == {"title": "Field trip permission slip due", "start": "2026-09-25", "all_day": True}
+    assert "Quarterly planning" in next(i for i in found if i.kind == "prep").headline
+    assert all("Elementary" not in i.headline for i in found if i.kind == "reply")  # orgs aren't "waiting on you"
+
+    today = now.date()
+    assert resolve_date("due Friday", today).isoformat() == "2026-09-25"
+    assert resolve_date("RSVP by Oct 3", today).isoformat() == "2026-10-03"
+    assert resolve_date("sign up by 10/1", today).isoformat() == "2026-10-01"
+    assert resolve_date("no date here", today) is None
+
+
+def test_a_deadline_already_on_the_calendar_is_not_flagged():
+    from app.insights import find_insights
+
+    now = datetime(2026, 9, 23, 17, 0, tzinfo=google.timezone.utc)
+    snap = {"events": [{"title": "Permission slip", "start": "2026-09-25"}],
+            "emails": [{"subject": "Field trip permission slip due Friday", "from": "Lincoln Elementary"}]}
+    assert not [i for i in find_insights(snap, tz_name="America/Los_Angeles", now=now) if i.kind == "deadline"]
+
+
+def test_one_tap_fix_turns_into_a_confirm_card_not_a_write():
+    c = TestClient(main.app)
+    sid = c.post("/api/sessions", json={"tz": "America/Los_Angeles"}).json()["state"]["session_id"]
+    st = runtime.store.get(sid)
+    st.agent_name, st.help_topic = "Wren", "school stuff"
+    text, _ = apply_event(st, "gmail_connected", {"demo": True})
+    runtime.store.save(st)
+    fix = next(i for i in st.insights if (i.get("action") or {}).get("type") == "add_event")
+
+    r = c.post(f"/api/sessions/{sid}/insights/{fix['id']}/add")
+    assert r.status_code == 200 and r.json()["state"]["pending_event"]["title"]
+    assert not runtime.store.get(sid).added_events  # proposed only; the confirm card's Add does the write
+    assert c.post(f"/api/sessions/{sid}/insights/nope/add").status_code == 404

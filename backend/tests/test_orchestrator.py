@@ -114,7 +114,10 @@ def test_director_note_priorities():
 
     s.user_name, s.help_topic = "Maya", "school emails"
     note = orch.directors_note(s, channel="voice")
-    assert "show_gmail_button" in note and "allowed, not yet offered" in note
+    assert "framed as a hunch" in note and "allowed, not yet offered" in note  # first: show you get their life
+    s.hunch_done = True
+    note = orch.directors_note(s, channel="voice")
+    assert "show_gmail_button" in note  # then: the Gmail pitch
 
     s.sentiment = "rushed"
     note = orch.directors_note(s, channel="voice")
@@ -130,7 +133,7 @@ def test_name_comes_from_google_then_fold_in():
     note = orch.directors_note(s, channel="voice")
     assert "Google account says 'Margaret'" in note and "prefer something else" in note
 
-    s.gmail_status, s.google_name = "denied", None  # no Gmail: a light fold-in ask, never standalone
+    s.gmail_status, s.google_name, s.hunch_done = "denied", None, True  # no Gmail: light fold-in ask, never standalone
     assert "Fold a light ask" in orch.directors_note(s, channel="voice")
 
 
@@ -239,7 +242,7 @@ def test_skip_and_gmail_refusal_are_guaranteed_by_code():
 
 def test_graduation_is_not_offered_twice_in_a_row():
     s = OnboardingState(agent_name="Kai", user_name="Jo", help_topic="school", user_turns=4, call_status="declined",
-                        gmail_status="denied")
+                        gmail_status="denied", hunch_done=True)
     orch.apply_tool_call(s, {"offered_graduation": True})
     assert "don't offer again yet" in orch.directors_note(s, channel="text")
     s.user_turns += 3

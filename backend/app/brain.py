@@ -151,6 +151,7 @@ class Brain:
             state.pending_notes = []
 
         value_moment_due = orch.value_moment_due(state)
+        hunch_due = orch.hunch_due(state)
         note = orch.directors_note(state, channel=channel, user_text=user_text or "")
         state.last_director_note = note
 
@@ -255,6 +256,8 @@ class Brain:
 
         if value_moment_due:
             state.value_moment_done = True
+        if hunch_due and state.help_topic:
+            state.hunch_done = True
         if state.skip_requested and not state.graduated:
             orch.graduate(state)  # the spec: if they ask to skip, let them go immediately
             ui_events.append({"type": "graduated"})

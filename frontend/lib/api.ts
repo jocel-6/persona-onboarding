@@ -36,9 +36,18 @@ export type SessionState = {
   graduated: boolean;
   corrected: string[];
   last_director_note: string | null;
+  insights: Insight[];
   pending_event: CalendarEvent | null;
   added_events: CalendarEvent[];
   transcript: Turn[];
+};
+
+export type Insight = {
+  id: string;
+  kind: "conflict" | "tight" | "packed" | "deadline" | "prep" | "reply";
+  headline: string;
+  detail: string;
+  action?: { type: "add_event" } | null;
 };
 
 export type CalendarEvent = { title: string; when: string; location?: string | null; all_day?: boolean };
@@ -134,6 +143,14 @@ export async function editField(id: string, field: EditableField, value: string)
   });
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Couldn't save that.");
+  return body.state as SessionState;
+}
+
+/** One tap on a finding's fix: returns state with a confirm card (nothing is added yet). */
+export async function addInsightFix(id: string, insightId: string): Promise<SessionState> {
+  const r = await fetch(`${API_URL}/api/sessions/${id}/insights/${insightId}/add`, { method: "POST" });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Couldn't set that up.");
   return body.state as SessionState;
 }
 

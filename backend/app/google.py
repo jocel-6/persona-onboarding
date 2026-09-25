@@ -208,8 +208,9 @@ async def fetch_snapshot(access_token: str) -> dict[str, Any]:
             for ev in data.get("items", []):
                 title = (ev.get("summary") or "").strip()
                 start = ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date")
+                end = ev.get("end", {}).get("dateTime") or ev.get("end", {}).get("date")
                 if title and start and not is_private(title):
-                    snap["events"].append({"title": title[:80], "start": start})
+                    snap["events"].append({"title": title[:80], "start": start, **({"end": end} if end else {})})
                 if len(snap["events"]) >= MAX_EVENTS:
                     break
         except httpx.HTTPError as e:
@@ -265,16 +266,26 @@ def demo_snapshot(now: datetime | None = None, tz_name: str | None = None) -> di
         d = (now + timedelta(days=days)).replace(hour=hour, minute=minute, second=0, microsecond=0)
         return d.isoformat()
 
+    def ev(title: str, days: int, h: int, m: int, mins: int) -> dict[str, str]:
+        start = (now + timedelta(days=days)).replace(hour=h, minute=m, second=0, microsecond=0)
+        return {"title": title, "start": start.isoformat(), "end": (start + timedelta(minutes=mins)).isoformat()}
+
+    # A realistic week with problems worth noticing: a packed Thursday where two things
+    # collide and two run back to back, a Friday deadline that's only in the inbox, a
+    # friend waiting on a reply, and a deck to review before Thursday's meeting.
+    thu = (3 - now.weekday()) % 7 or 7  # next Thursday, at least a day away
     return {
         "demo": True,
         "errors": [],
         "events": [
-            {"title": "Team standup", "start": at(1, 9, 30)},
-            {"title": "Dentist appointment", "start": at(2, 9, 15)},
-            {"title": "Parent-teacher conference", "start": at(3, 16, 0)},
-            {"title": "Soccer practice pickup", "start": at(3, 17, 30)},
-            {"title": "Dinner with Sam", "start": at(4, 19, 0)},
-            {"title": "Quarterly planning", "start": at(6, 13, 0)},
+            ev("Dentist appointment", thu + 1, 9, 15, 60),
+            ev("Team standup", thu, 9, 30, 15),
+            ev("Design review", thu, 10, 0, 60),
+            ev("Lunch with Priya", thu, 12, 0, 60),
+            ev("Quarterly planning", thu, 13, 0, 90),
+            ev("Parent-teacher conference", thu, 16, 0, 105),
+            ev("Soccer practice pickup", thu, 17, 30, 30),
+            ev("Dinner with Sam", thu + 2, 19, 0, 120),
         ],
         "emails": [
             {"subject": "Field trip permission slip due Friday", "from": "Lincoln Elementary"},

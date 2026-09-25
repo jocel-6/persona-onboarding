@@ -98,6 +98,23 @@ def in_call(state: OnboardingState) -> bool:
     return state.call_status == "in_progress"
 
 
+def refresh_insights(state: OnboardingState) -> None:
+    """Recompute what Persona noticed (after connecting, and after they fix something)."""
+    from .insights import find_insights
+
+    state.insights = [
+        i.public() for i in find_insights(state.account_snapshot, tz_name=state.user_tz, help_topic=state.help_topic)
+    ] if state.gmail_status == "connected" else []
+
+
+def hunch_due(state: OnboardingState) -> bool:
+    """Once we know their situation (and before their data does the talking), guess a problem they didn't mention."""
+    return (
+        bool(state.help_topic) and not state.hunch_done and not state.graduated and not state.wrapping_up
+        and state.gmail_status != "connected" and state.sentiment not in ("rushed", "frustrated")
+    )
+
+
 def value_moment_due(state: OnboardingState) -> bool:
     return state.gmail_status == "connected" and bool(state.help_topic) and not state.value_moment_done and not state.graduated
 
@@ -366,7 +383,8 @@ def _priority(state: OnboardingState) -> list[str]:
         lines = [
             "Onboarding is done: you're now their assistant. Help with whatever they ask, briefly and specifically. "
             "You can suggest, plan, and draft, but you can't send, book, or change anything yet: offer, and say "
-            "you'll do it once they say go. Use the account snapshot when it's relevant."
+            "you'll do it once they say go. Use the account snapshot when it's relevant. If there's a finding in "
+            "'Things you noticed' they haven't heard yet and they seem open, you can bring it up with its fix."
         ]
         missing = [label for slot, label in (("user_name", "their name"), ("gmail", "Gmail")) if not getattr(s, slot)]
         if missing:
@@ -429,6 +447,18 @@ def _priority(state: OnboardingState) -> list[str]:
         return lines
 
     if s.gmail_status == "connected" and s.help_topic and not s.value_moment_done:
+        if s.insights:
+            lines.append(
+                "Wow moment: from 'Things you noticed' below, lead with the most surprising, useful one: something "
+                "they didn't ask about, ideally tied to what they need help with. Say it like a friend who just spotted "
+                "it ('oh, heads up...'), then offer the fix; for a missing deadline or a prep block, offer to add it "
+                "(call propose_calendar_event). One finding only, and mention a couple more are on their screen."
+            )
+            if not s.user_name and s.google_name:
+                lines.append(
+                    f"Also, their Google account says {s.google_name!r}: ask lightly whether that's what they go by."
+                )
+            return lines
         lines.append(
             "Value moment: from the account snapshot below, pick the ONE item most relevant to what they need "
             "help with and offer (don't do) one concrete next action, like drafting a reply or setting a reminder. "
@@ -465,6 +495,12 @@ def _priority(state: OnboardingState) -> list[str]:
         if not s.user_name:
             # Opener stays curious; if they didn't offer a name in their first answer, ask lightly next.
             lines.append(early_name_ask if spoken_on_call >= 1 or s.channel == "text" and s.user_turns > 2 else name_passive)
+    elif hunch_due(s):
+        lines.append(
+            "Show you get their life beyond what they said: name one non-obvious problem that usually comes with "
+            "their situation, framed as a hunch ('I bet...' / 'let me guess...'), plus the concrete way you'd handle "
+            "it. Two short sentences. Don't pitch Gmail in the same breath."
+        )
     elif confirm_google_name:
         lines.append(
             f"Their Google account says {s.google_name!r}. Ask lightly whether that's what they go by or if they "
@@ -555,6 +591,10 @@ def directors_note(state: OnboardingState, *, channel: str, user_text: str = "")
     snapshot = ""
     if s.gmail_status == "connected" and s.account_snapshot and (value_moment_due(s) or s.wrapping_up or s.graduated):
         snapshot = "Account snapshot (read-only):\n" + describe_snapshot(s.account_snapshot, tz_name=s.user_tz)
+        if s.insights:
+            from .insights import describe_insights
+
+            snapshot += "\nThings you noticed (found by the app in their calendar/inbox):\n" + describe_insights(s.insights)
 
     from datetime import datetime, timezone
 

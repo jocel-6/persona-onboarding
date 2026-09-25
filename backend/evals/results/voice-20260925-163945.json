@@ -1,0 +1,42 @@
+[
+  {
+    "scenario": "baseline",
+    "voice": "Skylar",
+    "speed": 1.0,
+    "wer": 0.0,
+    "key_terms": "2/2",
+    "name_saved": true,
+    "saved_name": "Maya",
+    "heard": "Hi. I'm Maya, and, honestly, my inbox has been a total disaster since school started.",
+    "latency_ms": [
+      1746
+    ]
+  },
+  {
+    "scenario": "pause_mid_thought",
+    "voice": "Cathy",
+    "speed": 1.0,
+    "wer": 0.077,
+    "key_terms": "2/2",
+    "name_saved": true,
+    "saved_name": "Jordan",
+    "heard": "I'm Jordan, and what I really need is Help remembering my friend's birthdays.",
+    "latency_ms": [
+      1144
+    ]
+  },
+  {
+    "scenario": "correction",
+    "voice": "Parker",
+    "speed": 1.0,
+    "wer": 0.0,
+    "key_terms": "2/2",
+    "name_saved": true,
+    "saved_name": "Mia",
+    "heard": "Hi. I'm Maya. Sorry. Actually, it's Mia. I need help with my calendar.",
+    "latency_ms": [
+      1161,
+      1295
+    ]
+  }
+]

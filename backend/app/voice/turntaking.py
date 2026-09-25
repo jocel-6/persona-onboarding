@@ -37,6 +37,7 @@ from pipecat.frames.frames import (
     BotStoppedSpeakingFrame,
     Frame,
     InterimTranscriptionFrame,
+    ProposedUserStartedSpeakingFrame,
     TranscriptionFrame,
     VADUserStartedSpeakingFrame,
     VADUserStoppedSpeakingFrame,
@@ -102,10 +103,17 @@ def strip_leading_backchannels(text: str) -> str:
 class BackchannelAwareStartStrategy(BaseUserTurnStartStrategy):
     """Starts a user turn, ignoring listening noises while the agent is talking.
 
-    Agent silent: the first transcribed words start the turn. Agent speaking: the words
-    must be a real interruption (classify_barge_in). Voice activity alone never starts a
+    Agent silent: the first transcribed words start the turn, or Deepgram Flux's own
+    start-of-turn (its speech model, which ignores plain noise far better than VAD; Flux
+    only sends words at the end of a turn, so without this the turn "started" only after
+    they'd finished, and the silence check-in talked over them). Agent speaking: the words
+    must be a real interruption (classify_barge_in). Raw voice activity never starts a
     turn; it only times how long an ambiguous single word keeps going.
     """
+
+    @property
+    def resolves_proposed_turn_start_frames(self) -> bool:
+        return True
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -135,6 +143,14 @@ class BackchannelAwareStartStrategy(BaseUserTurnStartStrategy):
         elif isinstance(frame, BotStoppedSpeakingFrame):
             self._bot_speaking = False
             await self._cancel_barge_timer()
+        elif isinstance(frame, ProposedUserStartedSpeakingFrame):
+            if not self._bot_speaking:
+                await self.trigger_user_turn_started()
+                return ProcessFrameResult.STOP
+            # While it talks, Flux's start is only a hint: the words decide (below).
+            self._heard_word = False
+            await self._cancel_barge_timer()
+            self._barge_timer = asyncio.create_task(self._barge_in_after_delay())
         elif isinstance(frame, VADUserStartedSpeakingFrame):
             # Sound alone is not a turn (it may be the TV). While the agent talks, time it:
             # if it turns out to be a word that keeps going, that's an interruption.

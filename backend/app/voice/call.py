@@ -25,6 +25,7 @@ from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     InputAudioRawFrame,
+    InterimTranscriptionFrame,
     EagerEndOfTurnCancelFrame,
     TTSSpeakFrame,
     TTSUpdateSettingsFrame,
@@ -39,6 +40,7 @@ from pipecat.frames.frames import (
     UserIdleTimeoutUpdateFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
+from pipecat.utils.time import time_now_iso8601
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.worker import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -554,6 +556,14 @@ class VoiceCall:
                 settings=DeepgramFluxSTTService.Settings(keyterm=keyterms, eager_eot_threshold=0.5, eot_threshold=0.75),
             )
             stop_strategies = [EagerUserTurnStopStrategy()]
+
+            @stt.event_handler("on_update")
+            async def _flux_words(service, transcript: str):
+                # Flux reports words mid-turn only as an event; pass them on as interim
+                # transcripts so "wait" or "no, actually" interrupts while the agent talks.
+                await service.push_frame(
+                    InterimTranscriptionFrame(text=transcript, user_id="", timestamp=time_now_iso8601())
+                )
         else:
             stt = DeepgramSTTService(
                 api_key=s.deepgram_api_key,

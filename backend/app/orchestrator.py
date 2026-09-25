@@ -506,7 +506,7 @@ def _priority(state: OnboardingState) -> list[str]:
         "Be specific to that angle, in your own words. No catch-all questions like 'what's been keeping you busy' "
         "or 'what's life like lately'."
     )
-    name_passive = "If they mention their name, save it; don't ask for it on its own."
+    name_passive = "If they mention their name, save it (the call opener asks who you're talking to)."
     confirm_google_name = (
         not s.user_name and s.google_name and s.gmail_status == "connected"
     )
@@ -521,7 +521,8 @@ def _priority(state: OnboardingState) -> list[str]:
         lines.append(discover)
         if not s.user_name:
             # Opener stays curious; if they didn't offer a name in their first answer, ask lightly next.
-            lines.append(early_name_ask if spoken_on_call >= 1 or s.channel == "text" and s.user_turns > 2 else name_passive)
+            # Their name comes first: the call opener asks it; if they didn't answer, ask once more lightly.
+            lines.append(early_name_ask if spoken_on_call >= 1 or s.channel == "text" else name_passive)
     elif hunch_due(s):
         hunch = (
             "Show you get their life beyond what they said: name one non-obvious problem that usually comes with "
@@ -623,7 +624,7 @@ def directors_note(state: OnboardingState, *, channel: str, user_text: str = "")
     }.get(s.call_status, s.call_status)
 
     length = (
-        "Spoken reply: one or two short sentences, 30 words max." if channel == "voice"
+        "Spoken reply: one or two short sentences, 20 words max. React in a few words, then at most one question." if channel == "voice"
         else "Keep it short, like a text message."
     )
     if s.sentiment in ("rushed", "frustrated") or s.short_answer_streak >= 2:

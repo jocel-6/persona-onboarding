@@ -288,3 +288,31 @@ def test_words_start_a_turn_when_the_agent_is_quiet():
     strat.trigger_user_turn_started = trigger
     asyncio.run(strat.process_frame(InterimTranscriptionFrame(text="hi", user_id="u", timestamp="0")))
     assert started
+
+
+def test_flux_start_of_turn_takes_the_floor_only_when_the_agent_is_quiet(monkeypatch):
+    """Flux sends words only at the end of a turn; its speech start must start the turn,
+    or the silence check-in talks over the user ("Still there?" mid-answer)."""
+    from pipecat.frames.frames import BotStartedSpeakingFrame, BotStoppedSpeakingFrame, ProposedUserStartedSpeakingFrame
+
+    from app.voice import turntaking as tt
+
+    monkeypatch.setattr(tt, "BARGE_IN_SECS", 0.05)
+    strat = tt.BackchannelAwareStartStrategy()
+    started = []
+
+    async def trigger():
+        started.append(True)
+
+    strat.trigger_user_turn_started = trigger
+
+    async def go():
+        await strat.process_frame(BotStartedSpeakingFrame())
+        await strat.process_frame(ProposedUserStartedSpeakingFrame())
+        await asyncio.sleep(0.1)
+        assert not started  # while it talks, Flux's hint alone doesn't cut it off
+        await strat.process_frame(BotStoppedSpeakingFrame())
+        await strat.process_frame(ProposedUserStartedSpeakingFrame())
+        assert started == [True]
+
+    asyncio.run(go())

@@ -109,8 +109,8 @@ def test_director_note_priorities():
     s.channel = "voice"
     note = orch.directors_note(s, channel="voice")
     # On the call, discovery leads; the name is picked up, never asked on its own.
-    assert "Discover what they need" in note and "don't ask for it on its own" in note
-    assert "Graduation: not yet allowed" in note and "30 words max" in note
+    assert "Discover what they need" in note and "the call opener asks who" in note
+    assert "Graduation: not yet allowed" in note and "20 words max" in note
 
     s.user_name, s.help_topic = "Maya", "school emails"
     note = orch.directors_note(s, channel="voice")
@@ -190,7 +190,7 @@ def test_name_is_asked_lightly_after_the_first_answer_on_the_call():
     from app.state import Turn
 
     s = OnboardingState(agent_name="Ollie", call_status="in_progress", channel="voice")
-    assert "don't ask for it on its own" in orch.directors_note(s, channel="voice")  # the opener stays curious
+    assert "the call opener asks who" in orch.directors_note(s, channel="voice")  # the opener asks their name
     s.transcript.append(Turn(role="user", text="honestly work has been a lot", channel="voice"))
     note = orch.directors_note(s, channel="voice")
     assert "who am I talking to" in note and "Discover what they need" in note
@@ -293,3 +293,14 @@ def test_later_means_no_while_the_gmail_button_is_up():
     s = OnboardingState(agent_name="Kai")
     orch.before_user_turn(s, "I'll tell you later")  # no button up: just words
     assert s.gmail_status == "not_connected"
+
+
+def test_the_call_opener_asks_who_they_are():
+    from app.events import apply_event
+
+    s = OnboardingState(agent_name="Milo", call_status="ringing")
+    text, _ = apply_event(s, "call_connected", {})
+    assert "who you're talking to" in text
+    s = OnboardingState(agent_name="Milo", user_name="Jo", call_status="ringing")
+    text, _ = apply_event(s, "call_connected", {})
+    assert "Greet them by name" in text

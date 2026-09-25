@@ -75,10 +75,15 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
                 "the call just connected again (a callback). Pick up exactly where you left off; don't restart "
                 "or re-ask anything you already know."
             ), ui
+        if not state.user_name:
+            return (
+                "the call just connected and the user picked up. Like anyone answering the phone: say hi with "
+                "your name and ask who you're talking to, in your own words. That's the whole opener, one short "
+                "line."
+            ), ui
         return (
-            "the call just connected and the user picked up. Introduce yourself by name and open with one "
-            "curious, specific question as the director's note suggests. Don't ask for their name; they'll "
-            "usually offer it."
+            "the call just connected and the user picked up. Greet them by name, introduce yourself, and open "
+            "with one curious, specific question as the director's note suggests. One or two short sentences."
         ), ui
 
     if t == "call_missed":

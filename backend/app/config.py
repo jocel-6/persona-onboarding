@@ -89,8 +89,8 @@ class Settings:
     # ~4.5s before every reply (the model often judged finished sentences "incomplete").
     turn_max_wait_secs: float = field(default_factory=lambda: float(_env("TURN_MAX_WAIT_SECS", "1.2")))
     # Silence on the call: first check-in after this many seconds, then offer text after the second value.
-    silence_checkin_secs: float = field(default_factory=lambda: float(_env("SILENCE_CHECKIN_SECS", "5")))
-    silence_offer_text_secs: float = field(default_factory=lambda: float(_env("SILENCE_OFFER_TEXT_SECS", "10")))
+    silence_checkin_secs: float = field(default_factory=lambda: float(_env("SILENCE_CHECKIN_SECS", "8")))
+    silence_offer_text_secs: float = field(default_factory=lambda: float(_env("SILENCE_OFFER_TEXT_SECS", "15")))
 
     # #13: real phone calls + SMS recap (Twilio). PUBLIC_BASE_URL must reach this server (deploy or ngrok).
     twilio_account_sid: str = field(default_factory=lambda: _env("TWILIO_ACCOUNT_SID", ""))

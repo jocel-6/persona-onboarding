@@ -115,8 +115,12 @@ def test_export_has_everything_but_never_tokens():
     assert data["google_access_token_stored"] is True and data["conversation"][0]["role"] == "agent"
 
 
-def test_metrics_funnel_latency_and_cost():
+def test_metrics_funnel_latency_and_cost(monkeypatch):
+    import dataclasses
+
     from app import runtime
+
+    monkeypatch.setattr(main, "settings", dataclasses.replace(main.settings, metrics_token=""))  # ignore a local .env
 
     fake = FakeClient([("Nice to meet you!", {"user_name": "Maya", "help_topic": "school emails"}, "tool_use")])
     main.brain.client = fake

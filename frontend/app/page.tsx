@@ -272,7 +272,11 @@ export default function Onboarding() {
       applyState(created.state);
       created.ui.forEach(handleUi);
     } catch {
-      setError("Couldn't reach Persona. Is the backend running on port 8000?");
+      setError(
+        API_URL.includes("localhost")
+          ? "Couldn't reach Persona. Is the backend running on port 8000?"
+          : "Couldn't reach Persona right now. Please try again in a moment.",
+      );
     }
   }, [applyState, handleUi, run]);
 

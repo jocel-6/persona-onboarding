@@ -46,9 +46,13 @@ export async function startVoiceCall(sessionId: string, h: VoiceHandlers): Promi
       onUserStartedSpeaking: () => h.onUserSpeaking(true),
       onUserStoppedSpeaking: () => h.onUserSpeaking(false),
       onTrackStarted: (track, participant) => {
-        if (track.kind === "audio" && participant && !participant.local) {
+        // The agent's track arrives with no participant info; only our own mic is marked local.
+        if (track.kind === "audio" && !participant?.local) {
           audio.srcObject = new MediaStream([track]);
-          void audio.play().catch(() => {});
+          void audio.play().catch(() => {
+            // Autoplay blocked: start sound on the next click anywhere.
+            document.addEventListener("click", () => void audio.play().catch(() => {}), { once: true });
+          });
         }
       },
       onDisconnected: () => {

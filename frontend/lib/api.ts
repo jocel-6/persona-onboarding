@@ -21,6 +21,7 @@ export type SessionState = {
   help_topic: string | null;
   agent_name_defaulted: boolean;
   voice_id: string | null;
+  phone: string | null;
   gmail_status: "not_connected" | "popup_open" | "connected" | "denied" | "error";
   gmail_card_shown: boolean;
   gmail_demo: boolean;
@@ -139,7 +140,20 @@ export type Config = {
   voice_problem?: string | null;
   ice_servers?: RTCIceServer[];
   voice_choices?: VoiceChoice[];
+  phone?: boolean;
 };
+
+/** #13: Persona calls the user's real phone (Twilio). */
+export async function callMyPhone(id: string, phone: string): Promise<SessionState> {
+  const r = await fetch(`${API_URL}/api/sessions/${id}/phone-call`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone }),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Couldn't place the call.");
+  return body.state as SessionState;
+}
 
 export type VoiceChoice = { id: string; name: string; vibe?: string };
 

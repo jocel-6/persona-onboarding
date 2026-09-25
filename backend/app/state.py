@@ -42,6 +42,7 @@ class OnboardingState(BaseModel):
     help_topic: str | None = None
     agent_name_defaulted: bool = False  # user skipped naming, so we used the default
     voice_id: str | None = None  # the voice they picked for their Persona (None = server default)
+    phone: str | None = None  # #13: E.164 number, only if they asked Persona to call their phone
 
     gmail_status: GmailStatus = "not_connected"
     google_name: str | None = None  # from Google sign-in; confirmed with the user before it becomes user_name

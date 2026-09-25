@@ -487,9 +487,12 @@ def _trim_agent_turn(state: OnboardingState, ref: tuple[int, int], heard: str) -
 
 
 class VoiceCall:
-    def __init__(self, session_id: str, connection: SmallWebRTCConnection):
+    def __init__(self, session_id: str, connection: SmallWebRTCConnection | None = None, *, phone_ws=None,
+                 twilio: dict | None = None):
         self.session_id = session_id
         self.connection = connection
+        self.phone_ws = phone_ws  # #13: a Twilio media stream instead of browser WebRTC
+        self.twilio = twilio or {}
         self.brain_svc = BrainService(self)
         self.task: PipelineTask | None = None
         self._greeted = False
@@ -508,12 +511,32 @@ class VoiceCall:
         names = [state.agent_name, state.user_name, state.google_name] if state else []
         return [n for n in names if n]
 
+    def _transport(self):
+        if self.phone_ws is None:
+            return SmallWebRTCTransport(
+                webrtc_connection=self.connection,
+                params=TransportParams(audio_in_enabled=True, audio_out_enabled=True),
+            )
+        from pipecat.serializers.twilio import TwilioFrameSerializer
+        from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
+
+        s = runtime.settings
+        return FastAPIWebsocketTransport(
+            websocket=self.phone_ws,
+            params=FastAPIWebsocketParams(
+                audio_in_enabled=True,
+                audio_out_enabled=True,
+                add_wav_header=False,
+                serializer=TwilioFrameSerializer(
+                    stream_sid=self.twilio["stream_sid"], call_sid=self.twilio.get("call_sid"),
+                    account_sid=s.twilio_account_sid, auth_token=s.twilio_auth_token,
+                ),
+            ),
+        )
+
     def build(self) -> PipelineTask:
         s = runtime.settings
-        transport = SmallWebRTCTransport(
-            webrtc_connection=self.connection,
-            params=TransportParams(audio_in_enabled=True, audio_out_enabled=True),
-        )
+        transport = self._transport()
         keyterms = [*self._keyterms(), "Persona", "Gmail"]  # names right every time, plus onboarding words
         if s.stt_engine == "flux":
             from pipecat.services.deepgram.flux.stt import DeepgramFluxSTTService
@@ -584,6 +607,8 @@ class VoiceCall:
         @transport.event_handler("on_client_disconnected")
         async def _disconnected(_transport, _client):
             await self.stop()
+            if self.phone_ws is not None:
+                await self._after_phone_call()
 
         self.tone_tap = ToneTap() if s.hume_api_key else None
         pipeline = Pipeline(
@@ -599,7 +624,8 @@ class VoiceCall:
                 assistant_agg,
             ]
         )
-        self.task = PipelineTask(pipeline, params=PipelineParams(enable_metrics=True))
+        phone_rates = {"audio_in_sample_rate": 8000, "audio_out_sample_rate": 8000} if self.phone_ws else {}
+        self.task = PipelineTask(pipeline, params=PipelineParams(enable_metrics=True, **phone_rates))
 
         @self.task.rtvi.event_handler("on_client_ready")
         async def _client_ready(_rtvi):
@@ -621,6 +647,28 @@ class VoiceCall:
             await self.brain_svc._send({"type": "ui", "ui": ev})
         if event_text:
             await self.brain_svc.start_turn(event_text=event_text)
+
+    async def _after_phone_call(self) -> None:
+        """#13: a real phone hung up. Nobody's browser is attached to send 'hangup', so do it here:
+        the text follow-up lands in the chat, and a recap goes out by SMS."""
+        from . import phone
+
+        sid = self.session_id
+        async with runtime.locks[sid]:
+            state = runtime.store.get(sid)
+            if state is None or state.call_status != "in_progress":
+                return
+            event_text, _ = apply_event(state, "hangup", {})
+            if event_text:
+                async for _ev in runtime.brain.run_turn(state, event_text=event_text):
+                    pass
+            runtime.store.save(state)
+        if state.phone:
+            try:
+                await phone.send_sms(runtime.settings, state.phone, phone.recap_text(state, runtime.settings.frontend_origins()[0]
+                                                                                    if runtime.settings.frontend_origins() else None))
+            except Exception:  # noqa: BLE001 - a failed SMS never breaks anything else
+                log.exception("recap SMS failed for session %s", sid[:8])
 
     async def say_event(self, event_text: str):
         """Run an event turn on the call (e.g. Gmail connected mid-call): spoken, not texted."""

@@ -37,7 +37,7 @@ Ideas beyond the take-home spec, chosen to make the consumer experience better a
 
 | # | Idea | What the user notices | Status |
 |---|---|---|---|
-| 13 | **Real phone calls and texts** (Twilio): Persona calls your number; the recap arrives as an SMS. | The spec's "phone call," literally | ⬜ |
+| 13 | **Real phone calls and texts** (Twilio): Persona calls your number; the recap arrives as an SMS. | The spec's "phone call," literally | 🔑 |
 | 14 | **"What Persona knows about you."** Everything it learned, editable and deletable, in one place. | Trust and transparency, on-brand for "nothing without your yes" | ✅ |
 
 ## E. Engineering depth
@@ -51,6 +51,8 @@ Ideas beyond the take-home spec, chosen to make the consumer experience better a
 > #17 needs the Anthropic key as a GitHub secret (repo → Settings → Secrets and variables → Actions → `ANTHROPIC_API_KEY`). It runs only by hand or on PRs labeled `eval` (~$0.40/run, capped at $2).
 
 > #15 is built and dry-runs by default (`scripts/voice_eval.py`); `--yes` runs it (~$0.15 for all six calls). #5 switches on with `HUME_API_KEY`.
+
+> #13 switches on with a Twilio account (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`) and a public https URL for this server (`PUBLIC_BASE_URL`: the deployed backend, or an ngrok tunnel locally).
 
 ## Build order
 

@@ -31,7 +31,7 @@ Or run the backend in Docker: `docker build -t persona-backend backend && docker
 
 Open http://localhost:3000. "Show state" in the top bar shows the slot table, signals, and per-turn latency. "Start over" resets the session.
 
-Tests: `cd backend && .venv/bin/python -m pytest` (46 tests, fake model client: no keys, no network). CI runs them plus the frontend typecheck, lint and build on every push (`.github/workflows/ci.yml`).
+Tests: `cd backend && .venv/bin/python -m pytest` (63 tests, fake model client: no keys, no network). CI runs them plus the frontend typecheck, lint and build on every push (`.github/workflows/ci.yml`).
 
 Evals: `cd backend && .venv/bin/python -m evals.run` (real API calls; ~$0.10 per conversation; capped by `EVAL_BUDGET_USD`, default $20).
 
@@ -119,6 +119,17 @@ Persona's pitch is solving problems before you ask, so onboarding shows it off:
 - **Findings from your calendar and inbox** (`backend/app/insights.py`): plain code, so it's free per user, instant, deterministic, and tested. It detects overlapping events, back-to-backs with no breathing room, packed days, **deadlines that are in your email but not on your calendar**, emails that are clearly prep for an upcoming meeting, and people waiting on a reply. Findings are ranked by severity, how soon, and relevance to what you said you need help with.
 - **The wow moment:** Claude gets the ranked findings in the director's note and leads with the most surprising one like a friend who just spotted it ("oh, heads up, your conference Thursday runs right into soccer pickup"), then offers the fix. A **Persona noticed** card shows the top three with one-tap fixes (**Add to calendar** opens the confirm card; nothing is added without the tap).
 - The demo account is a realistic week seeded with exactly these problems, so reviewers without Google access see the full effect.
+
+## Beyond the spec
+
+Seventeen upgrades aimed at the consumer experience, tracked with status and cost in **[docs/ROADMAP.md](docs/ROADMAP.md)**. Highlights:
+
+- **Feels human-fast:** instant spoken acknowledgements while the reply is written; speculative replies generated during your final pause (Deepgram Flux, opt-in); tone-matched delivery (slower and even when you're frustrated).
+- **Solves, not just flags:** "Persona noticed" findings come with real fixes: *move* the clashing event into the first free slot, protect a break on a packed day, add a missing deadline, and **draft a reply** to someone waiting on you, saved to Gmail drafts on your tap (never sent). A background deep-thinking pass (Sonnet 5) finds connections rules can't. Every write needs a tap.
+- **Looks premium:** a living profile that fills in as it gets to know you, an animated voice orb with word-synced captions, pick your Persona's voice when you name it, an installable phone-first web app.
+- **Trust:** "What I know about you": everything it learned and did, editable, exportable, deletable.
+- **Real-world:** Persona can call your actual phone and text you the recap (Twilio, switches on with an account).
+- **Engineering:** a metrics dashboard (`/metrics`: funnel, latency, cost), voice evals over real audio (`scripts/voice_eval.py`), and an eval quality gate for CI.
 
 ## Recap (Phase 4)
 

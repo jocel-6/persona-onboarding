@@ -92,6 +92,11 @@ class Settings:
     silence_checkin_secs: float = field(default_factory=lambda: float(_env("SILENCE_CHECKIN_SECS", "5")))
     silence_offer_text_secs: float = field(default_factory=lambda: float(_env("SILENCE_OFFER_TEXT_SECS", "10")))
 
+    # #13: real phone calls + SMS recap (Twilio). PUBLIC_BASE_URL must reach this server (deploy or ngrok).
+    twilio_account_sid: str = field(default_factory=lambda: _env("TWILIO_ACCOUNT_SID", ""))
+    twilio_auth_token: str = field(default_factory=lambda: _env("TWILIO_AUTH_TOKEN", ""))
+    twilio_from_number: str = field(default_factory=lambda: _env("TWILIO_FROM_NUMBER", ""))
+    public_base_url: str = field(default_factory=lambda: _env("PUBLIC_BASE_URL", ""))
     # #5: hear tone of voice (Hume prosody). Off unless a key is set.
     hume_api_key: str = field(default_factory=lambda: _env("HUME_API_KEY", ""))
     # #16: when set, /api/metrics requires ?token=<this>.
@@ -125,6 +130,14 @@ class Settings:
             return [s for s in servers if isinstance(s, dict) and s.get("urls")]
         except ValueError:
             return [{"urls": "stun:stun.l.google.com:19302"}]
+
+    def phone_problem(self) -> str | None:
+        """Why real phone calls can't run, or None if they can."""
+        if not (self.twilio_account_sid and self.twilio_auth_token and self.twilio_from_number):
+            return "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER not set"
+        if not self.public_base_url.startswith("https://"):
+            return "PUBLIC_BASE_URL (https) not set, so Twilio can't reach this server"
+        return self.voice_problem()
 
     def tts_key(self) -> str:
         return {

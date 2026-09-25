@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   API_URL,
   addInsightFix,
+  callMyPhone,
   draftReply,
   pickVoice,
   voiceSampleUrl,
@@ -553,6 +554,15 @@ export default function Onboarding() {
                     Keep texting
                   </button>
                 </div>
+                {config.phone && session && (
+                  <PhoneCallForm
+                    onCall={async (num) => {
+                      const st = await callMyPhone(session.session_id, num);
+                      setCallOffer(false);
+                      applyState(st);
+                    }}
+                  />
+                )}
               </div>
             )}
 
@@ -1031,6 +1041,41 @@ function CallScreen({
         )}
       </div>
     </div>
+  );
+}
+
+/** #13: "or call my phone" — Twilio dials the real number; same brain as the browser call. */
+function PhoneCallForm({ onCall }: { onCall: (phone: string) => Promise<void> }) {
+  const [num, setNum] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  return (
+    <form
+      className="edit-row phone-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setStatus("Calling…");
+        try {
+          await onCall(num);
+          setStatus("Calling your phone now. Pick up!");
+        } catch (err) {
+          setStatus(err instanceof Error ? err.message : "Couldn't place the call.");
+        }
+      }}
+    >
+      <input
+        type="tel"
+        inputMode="tel"
+        autoComplete="tel"
+        placeholder="Or call my phone: (415) 555-0100"
+        value={num}
+        onChange={(e) => setNum(e.target.value)}
+        aria-label="Your phone number"
+      />
+      <button className="ghost small" type="submit" disabled={num.replace(/\D/g, "").length < 7}>
+        Call my phone
+      </button>
+      {status && <span className="small muted">{status}</span>}
+    </form>
   );
 }
 

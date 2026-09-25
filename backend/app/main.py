@@ -13,6 +13,8 @@
   POST   /api/sessions/{id}/insights/{insight_id}/add   turn a finding's fix into a confirm card
   POST   /api/sessions/{id}/insights/{insight_id}/draft draft a reply (shown for editing; saved only on a tap)
   POST   /api/offer, PATCH /api/offer   WebRTC signaling for the voice call
+  POST   /api/sessions/{id}/phone-call  #13: Persona calls your real phone (Twilio)
+  WS     /api/twilio/stream             the phone call's audio, into the same pipeline
   GET    /api/google/start, /callback   Google sign-in popup (read-only calendar + email headers)
 
 Stream events: {"type": "delta", "text"} while the agent talks, {"type": "ui", "ui": {...}}
@@ -33,7 +35,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
@@ -146,6 +148,7 @@ def _config() -> dict[str, Any]:
         "voice_problem": problem,
         "ice_servers": settings.ice_servers(),
         "voice_choices": [{k: v.get(k) for k in ("id", "name", "vibe")} for v in settings.voice_choices()],
+        "phone": settings.phone_problem() is None,
     }
 
 
@@ -568,6 +571,56 @@ async def webrtc_offer(request: Request) -> dict[str, Any]:
 
     answer = await _handler().handle_web_request(req, on_connection)
     return answer or {}
+
+
+class PhoneIn(BaseModel):
+    phone: str = Field(min_length=7, max_length=24)
+
+
+@app.post("/api/sessions/{session_id}/phone-call")
+async def phone_call(session_id: str, body: PhoneIn) -> dict[str, Any]:
+    """#13: Persona calls the user's real phone. Same pipeline and brain as the browser call."""
+    from .voice import phone
+
+    problem = settings.phone_problem()
+    if problem:
+        raise HTTPException(503, f"phone calls unavailable: {problem}")
+    number = phone.normalize_number(body.phone)
+    if not number:
+        raise HTTPException(422, "That doesn't look like a phone number.")
+    async with runtime.locks[session_id]:
+        state = _load(session_id)
+        state.phone = number
+        apply_event(state, "call_accepted", {})  # ringing
+        store.save(state)
+    try:
+        await phone.place_call(settings, number, session_id)
+    except Exception:  # noqa: BLE001
+        log.exception("Twilio call failed for session %s", session_id[:8])
+        raise HTTPException(502, "Couldn't place the call. Check the number and try again.")
+    return {"state": _load(session_id).public_view()}
+
+
+@app.websocket("/api/twilio/stream")
+async def twilio_stream(ws: WebSocket) -> None:
+    """Twilio Media Streams: read the 'start' message for the session, then run the call."""
+    from .voice.call import VoiceCall, end_call
+
+    await ws.accept()
+    start: dict[str, Any] = {}
+    for _ in range(5):  # 'connected', then 'start'
+        msg = json.loads(await ws.receive_text())
+        if msg.get("event") == "start":
+            start = msg.get("start") or {}
+            break
+    session_id = str((start.get("customParameters") or {}).get("session_id") or "")
+    state = store.get(session_id) if session_id else None
+    if not start.get("streamSid") or state is None or state.call_status not in ("ringing", "in_progress"):
+        await ws.close()
+        return
+    await end_call(session_id)
+    call = VoiceCall(session_id, phone_ws=ws, twilio={"stream_sid": start["streamSid"], "call_sid": start.get("callSid")})
+    await call.run()
 
 
 @app.patch("/api/offer")

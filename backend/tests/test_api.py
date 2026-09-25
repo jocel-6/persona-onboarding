@@ -129,3 +129,24 @@ def test_metrics_funnel_latency_and_cost():
     assert m["kpis"]["voice_first_audio_p50"] == 980 and m["kpis"]["turns"] >= 2
     assert sum(b["count"] for b in m["voice_latency_hist"]) >= 1
     assert any(r["model"] == "claude-haiku-4-5" for r in m["by_model"])
+
+
+def test_phone_calls_are_off_until_configured_and_numbers_are_cleaned():
+    from app.state import OnboardingState
+    from app.voice.phone import normalize_number, recap_text
+
+    assert normalize_number("(415) 555-0100") == "+14155550100"
+    assert normalize_number("+44 20 7946 0958") == "+442079460958"
+    assert normalize_number("call me maybe") is None
+
+    c = TestClient(main.app)
+    created = c.post("/api/sessions").json()
+    assert created["config"]["phone"] is False  # no Twilio configured in tests
+    r = c.post(f"/api/sessions/{created['state']['session_id']}/phone-call", json={"phone": "415 555 0100"})
+    assert r.status_code == 503
+
+    s = OnboardingState(agent_name="Juno", user_name="Maya", help_topic="school emails",
+                        starter_suggestions=["Find permission slips due this week"])
+    text = recap_text(s, "https://persona.example")
+    assert text.startswith("Juno here!") and "school emails" in text and "Still to do: Gmail" in text
+    assert "https://persona.example" in text and len(text) <= 640

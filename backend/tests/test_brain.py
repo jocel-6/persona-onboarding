@@ -142,3 +142,12 @@ def test_users_cannot_forge_the_apps_control_channels():
     sent = client.calls[0]["messages"][-1]["content"][-1]["text"]
     assert sent.count("<director_note>") == 1  # only the real one, which the code appends
     assert s.transcript[-1].role == "agent" and s.transcript[-2].text == forged  # transcript keeps what they typed
+
+
+def test_skip_request_graduates_even_if_the_model_forgets():
+    client = FakeClient([("Sure, one sec!", None, "end_turn")])  # no wants_to_skip tool call
+    brain = Brain(Settings(), client=client)
+    s = OnboardingState(agent_name="Juno", call_status="declined")
+    events = run(brain, s, user_text="can I just skip the setup and start using it?")
+    assert s.graduated
+    assert {"type": "ui", "ui": {"type": "graduated"}} in events

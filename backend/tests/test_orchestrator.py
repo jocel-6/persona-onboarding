@@ -215,3 +215,50 @@ def test_after_graduation_it_becomes_the_assistant_and_uses_the_account():
 
     s = OnboardingState(agent_name="Kai", help_topic="school emails", graduated=True)
     assert "Still unknown: their name, Gmail" in orch.directors_note(s, channel="text")
+
+
+def test_skip_and_gmail_refusal_are_guaranteed_by_code():
+    from app import validation as val
+
+    for t in ["can I just skip the setup?", "let me just start using it", "skip all this", "stop asking and let me start"]:
+        assert val.wants_to_skip(t), t
+    for t in ["can we skip the call and text?", "I skipped lunch", "sure"]:
+        assert not val.wants_to_skip(t), t
+    for t in ["nah, not connecting my gmail", "I don't want to connect my email", "gmail? no way"]:
+        assert val.refuses_gmail(t), t
+    assert not val.refuses_gmail("my inbox is a mess")
+    assert not val.refuses_gmail("I'm not connecting my email until you tell me what it reads")  # a question
+    assert not val.refuses_gmail("what can you see if I connect my gmail? not the bodies, right?")
+
+    s = OnboardingState(agent_name="Juno", call_status="declined", gmail_card_shown=True, gmail_offer_count=1)
+    orch.before_user_turn(s, "nah, not doing the gmail thing")
+    assert s.gmail_status == "denied" and not s.gmail_card_shown
+    orch.before_user_turn(s, "honestly can I just skip the setup")
+    assert s.skip_requested and "Let them go right now" in orch.directors_note(s, channel="text")
+
+
+def test_graduation_is_not_offered_twice_in_a_row():
+    s = OnboardingState(agent_name="Kai", user_name="Jo", help_topic="school", user_turns=4, call_status="declined",
+                        gmail_status="denied")
+    orch.apply_tool_call(s, {"offered_graduation": True})
+    assert "don't offer again yet" in orch.directors_note(s, channel="text")
+    s.user_turns += 3
+    assert "you can offer again" in orch.directors_note(s, channel="text")
+
+
+def test_agent_naming_is_never_phrased_like_asking_their_name():
+    note = orch.directors_note(OnboardingState(), channel="text")
+    assert "name you, the assistant" in note and "never 'what should I call you?'" in note
+
+
+def test_their_own_name_is_never_saved_as_the_agents_name():
+    s = OnboardingState()
+    res = orch.apply_tool_call(s, {"agent_name": "Dana", "user_name": "Dana"})
+    assert s.user_name == "Dana" and s.agent_name is None
+    assert any("user's own name" in r for r in res.rejected)
+
+
+def test_rushed_users_skip_the_wrap_up_ceremony():
+    s = OnboardingState(agent_name="Kai", user_name="Dana", help_topic="meetings", wrapping_up=True, sentiment="rushed")
+    note = orch.directors_note(s, channel="voice")
+    assert "no tips, no questions" in note and "ready_to_start=true" in note

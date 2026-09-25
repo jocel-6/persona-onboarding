@@ -68,7 +68,10 @@ class OnboardingState(BaseModel):
     wrapping_up: bool = False
     starter_suggestions: list[str] = Field(default_factory=list)
 
+    skip_requested: bool = False  # code heard a clear "skip the setup"; graduation follows this turn
+
     graduation_offered: bool = False
+    graduation_offered_at_turn: int | None = None
     graduation_declined_at_turn: int | None = None
     graduated: bool = False
 

@@ -77,6 +77,34 @@ _FRUSTRATED_RE = re.compile(
 )
 
 
+# Clear requests to skip onboarding entirely. Not "skip the call": that's just declining the call.
+_SKIP_RE = re.compile(
+    r"\b(skip (the |this |all (of )?)?(setup|set-up|onboarding|this|everything|all this|the rest|questions)|"
+    r"(just |let me )?(start|jump in|get started) (using|with) (it|you|the app)|"
+    r"(just )?let me (in|start|use it)|stop asking.{0,20}(let me|start))\b",
+    re.IGNORECASE,
+)
+# A clear no to connecting Gmail (after it's been mentioned).
+_GMAIL_NO_RE = re.compile(
+    r"(\b(no|nah|nope|not|don'?t|won'?t|never|rather not)\b.{0,30}\b(gmail|email|inbox|connect(ing)?)\b)|"
+    r"(\b(gmail|email|inbox)\b.{0,20}\b(no|nah|nope|not happening|no way|pass)\b)",
+    re.IGNORECASE,
+)
+
+
+def wants_to_skip(text: str) -> bool:
+    return bool(_SKIP_RE.search(text))
+
+
+# "Not until you tell me what it reads" is a question, not a no.
+_CONDITIONAL_RE = re.compile(r"\b(until|unless|before|first|if|what|how|why|which|depends)\b", re.IGNORECASE)
+
+
+def refuses_gmail(text: str) -> bool:
+    asking = text.rstrip().endswith("?") or bool(_CONDITIONAL_RE.search(text))
+    return bool(_GMAIL_NO_RE.search(text)) and not asking
+
+
 def mood_cue(text: str) -> str | None:
     """'frustrated' or 'rushed' when the words make it obvious, else None (the model decides)."""
     if _FRUSTRATED_RE.search(text):

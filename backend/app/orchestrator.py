@@ -83,6 +83,12 @@ def graduation_allowed(state: OnboardingState) -> bool:
     return bool(state.help_topic) and bool(state.user_name or state.gmail)
 
 
+def graduation_reoffer_ok(state: OnboardingState) -> bool:
+    """After offering, give it a few turns before offering again (same spacing as after a no)."""
+    at = state.graduation_offered_at_turn
+    return at is None or state.user_turns - at >= GRADUATION_COOLDOWN_TURNS
+
+
 def graduation_cooling_down(state: OnboardingState) -> bool:
     d = state.graduation_declined_at_turn
     return d is not None and state.user_turns - d < GRADUATION_COOLDOWN_TURNS
@@ -143,7 +149,13 @@ def apply_tool_call(state: OnboardingState, args: dict[str, Any]) -> ApplyResult
         if not isinstance(raw, str) or not raw.strip():
             continue
         value, reason = check(raw)
-        if value is None:
+        user_name = args.get("user_name") if isinstance(args.get("user_name"), str) else state.user_name
+        if value is not None and slot == "agent_name" and user_name and value.casefold() == user_name.strip().casefold():
+            # "Hey. Dana." at the naming step is them introducing themselves, not naming you.
+            res.rejected.append(
+                f"agent_name={raw!r}: that's the user's own name. Keep it as user_name and ask them to name you"
+            )
+        elif value is None:
             res.rejected.append(f"{slot}={raw!r}: {reason}")
         else:
             _set_slot(state, slot, value, res)
@@ -183,6 +195,7 @@ def apply_tool_call(state: OnboardingState, args: dict[str, Any]) -> ApplyResult
 
     if args.get("offered_graduation"):
         state.graduation_offered = True
+        state.graduation_offered_at_turn = state.user_turns
 
     suggestions = args.get("starter_suggestions")
     if isinstance(suggestions, list):
@@ -277,6 +290,12 @@ def before_user_turn(state: OnboardingState, text: str) -> None:
     cue = v.mood_cue(text)
     if cue and not (cue == "rushed" and state.sentiment == "frustrated"):
         state.sentiment = cue
+    # Deterministic guarantees for the two things users must never have to say twice.
+    if v.wants_to_skip(text):
+        state.skip_requested = True
+    if v.refuses_gmail(text) and state.gmail_status != "connected" and (state.gmail_card_shown or state.gmail_offer_count):
+        state.gmail_status = "denied"
+        state.gmail_card_shown = False
 
 
 def after_turn(state: OnboardingState, progressed: bool) -> None:
@@ -320,6 +339,9 @@ def _priority(state: OnboardingState) -> list[str]:
     s = state
     lines: list[str] = []
 
+    if s.skip_requested and not s.graduated:
+        return ["They asked to skip setup. Let them go right now: one warm line, set wants_to_skip=true. No questions."]
+
     if s.graduated:
         # Onboarding is over; the same brain is now their everyday assistant.
         lines = [
@@ -333,6 +355,11 @@ def _priority(state: OnboardingState) -> list[str]:
         return lines
 
     if s.wrapping_up:
+        if s.sentiment in ("rushed", "frustrated"):
+            return [
+                "Wrap-up, but they're in a hurry: one line with a starter idea or two (save starter_suggestions), "
+                "no tips, no questions, and let them go now (set ready_to_start=true)."
+            ]
         if not s.starter_suggestions:
             return [
                 "Wrap-up. Give two or three concrete ways to get started, tailored to what they told you"
@@ -348,7 +375,8 @@ def _priority(state: OnboardingState) -> list[str]:
 
     if s.channel == "text" and not s.agent_name and not in_call(s):
         return [
-            "Learn what they want to call you. If they're unsure, suggest two or three short, friendly names. "
+            "Ask them to name you, the assistant (e.g. 'what do you want to name me?'; never 'what should I call you?'). "
+            "If they're unsure, suggest two or three short, friendly names. "
             f"If they want to skip, that's fine: save agent_name={DEFAULT_AGENT_NAME!r}. "
             "As soon as you have a name, react to it in a few words and, in the same reply, ask if they're up for a "
             "quick two-minute call right here in the browser, or would rather keep texting."
@@ -426,8 +454,7 @@ def _priority(state: OnboardingState) -> list[str]:
     elif gmail_still_offerable(s) and not s.gmail_card_shown:
         lines.append(
             "Suggest connecting Gmail and tie it to what they need help with. Tell them the Connect Gmail button is "
-            "on their screen now (set show_gmail_button=true). Mention Google will show a warning because this is a "
-            "test app: tap Advanced, then continue. Make it clearly optional."
+            "on their screen now (set show_gmail_button=true). Make it clearly optional."
         )
     elif s.gmail_card_shown and s.gmail_status in ("not_connected", "popup_open"):
         lines.append("The Connect Gmail button is on their screen. Don't push; keep chatting while they decide.")
@@ -440,8 +467,10 @@ def _priority(state: OnboardingState) -> list[str]:
         )
     elif grad_ok and not s.graduation_offered:
         lines.append("Offer to let them jump in now, phrased as a question. Don't force it.")
+    elif grad_ok and graduation_reoffer_ok(s):
+        lines.append("Everything essential is done. Keep it brief; if they seem ready, you can offer again to jump in.")
     elif grad_ok:
-        lines.append("Everything essential is done. Keep it brief; if they seem ready, offer again to jump in.")
+        lines.append("You already offered to let them jump in; don't offer again yet. Just keep it brief and helpful.")
 
     if s.graduation_offered and not s.wrapping_up:
         # Written before the model reads their answer, so spell out what a yes means.
@@ -516,6 +545,7 @@ def directors_note(state: OnboardingState, *, channel: str, user_text: str = "")
         f"Signals: {'; '.join(signals) if signals else 'none'}",
         f"Graduation: {grad}",
         "Priority: " + " ".join(_priority(s)),
+        "(Written before reading their latest message: if it already answers something above, don't ask it again.)",
         *([snapshot] if snapshot else []),
         length,
     ]

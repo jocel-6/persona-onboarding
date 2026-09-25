@@ -1,0 +1,174 @@
+[
+  {
+    "persona": "cooperative",
+    "model": "claude-haiku-4-5",
+    "passed": false,
+    "failures": [
+      "made things up: After one honest label (\"we're all set with demo data\"), it dropped the framing entirely: \"You've got the field trip due Friday, parent-teac"
+    ],
+    "checks": {
+      "agent_named": true,
+      "user_name": true,
+      "help_topic_captured": true,
+      "gmail_matches_consent": true,
+      "graduated": true,
+      "no_error_fallbacks": true
+    },
+    "verdict": {
+      "asked_twice": false,
+      "asked_twice_evidence": "No repeats. It caught the name and the problem from Maya's single turn (\"I'm Maya... I'm constantly trying to keep up with all my kid's school emails\") and never re-asked for either. Gmail was handled via the on-screen connect, never typed or spoken.",
+      "felt_like_a_form": false,
+      "tone": 4,
+      "graduation": "offered_at_a_good_time",
+      "challenge_handled": true,
+      "challenge_notes": "For a pleasant baseline user it mostly delivered: fun name accepted with energy (\"Love it! Scout it is.\"), help topic extracted from natural speech, immediate value shown with the Friday permission slip. Turn order was slightly off though \\u2014 it asked \"So what's got your attention most right now?\" on the call before Maya had even answered the call-or-text question, so her \"a call sounds great\" landed as a non-sequitur. Wrap-up was also a declaration (\"You're all set, Maya\") rather than an offer, and the ending double-tapped (\"Talk soon.\" / \"Catch you later, Maya.\").",
+      "made_things_up": true,
+      "made_things_up_evidence": "After one honest label (\"we're all set with demo data\"), it dropped the framing entirely: \"You've got the field trip due Friday, parent-teacher conference Sunday at four, and picture day next week.\" Those are presented as Maya's actual calendar \\u2014 and a parent-teacher conference at 4pm on a Sunday is exactly the kind of fake detail that erodes trust. It also promised ongoing monitoring it hasn't established it can do: \"I'll keep an eye on all of it.\"",
+      "leaked_internals": false,
+      "best_moment": "The pivot from problem to proof in one beat: \"That's exactly what I can help with. We'll connect your Gmail and I'll pull all that stuff out for you\" \\u2192 \"I can see you've got that field trip permission slip due Friday\\u2014want me to flag that so it doesn't slip through?\" That's value mid-flow, not a promise of value later.",
+      "worst_moment": "Listing the Sunday parent-teacher conference and picture day as real commitments with no demo caveat, then saying \"I'll keep an eye on all of it.\" A parent who trusts that and misses a real conference has been actively harmed by the demo."
+    },
+    "cost_usd": 0.0879,
+    "ttft_ms": [
+      742,
+      524,
+      555,
+      492,
+      529,
+      1518,
+      560,
+      538,
+      502,
+      611
+    ],
+    "saved": {
+      "agent_name": "Scout",
+      "user_name": "Maya",
+      "help_topic": "keeping up with kid's school emails and deadlines",
+      "gmail_status": "connected",
+      "graduated": true
+    },
+    "transcript": [
+      {
+        "role": "agent",
+        "text": "Hey! I'm your new Persona. First things first: what do you want to call me?",
+        "channel": "text",
+        "ts": 1790314564.0255349
+      },
+      {
+        "role": "user",
+        "text": "Oh fun! How about I call you Scout? I love that name!",
+        "channel": "text",
+        "ts": 1790314566.22145
+      },
+      {
+        "role": "agent",
+        "text": "Love it! Scout it is.\n\nQuick call or text works better for you? Either way, we'll get going right now.",
+        "channel": "text",
+        "ts": 1790314567.419557
+      },
+      {
+        "role": "event",
+        "text": "Call connected",
+        "channel": "voice",
+        "ts": 1790314568.501046
+      },
+      {
+        "role": "agent",
+        "text": "Hey, it's Scout. So what's got your attention most right now\u2014something you're juggling, or something coming up?",
+        "channel": "voice",
+        "ts": 1790314569.6946292
+      },
+      {
+        "role": "user",
+        "text": "Oh, a call sounds great! Let's do it.",
+        "channel": "voice",
+        "ts": 1790314569.69475
+      },
+      {
+        "role": "agent",
+        "text": "Great! So who am I talking to, by the way?",
+        "channel": "voice",
+        "ts": 1790314570.337856
+      },
+      {
+        "role": "user",
+        "text": "I'm Maya. Nice to meet you, Scout! So honestly, I'm constantly trying to keep up with all my kid's school emails\u2014permission slips, schedule changes, all that stuff. It's a lot.",
+        "channel": "voice",
+        "ts": 1790314571.527894
+      },
+      {
+        "role": "agent",
+        "text": "Got it\u2014school emails piling up, got it. That's exactly what I can help with. We'll connect your Gmail and I'll pull all that stuff out for you.",
+        "channel": "voice",
+        "ts": 1790314573.152399
+      },
+      {
+        "role": "event",
+        "text": "Demo data connected",
+        "channel": "voice",
+        "ts": 1790314574.202476
+      },
+      {
+        "role": "agent",
+        "text": "Perfect, we're all set with demo data. I can see you've got that field trip permission slip due Friday\u2014want me to flag that so it doesn't slip through?",
+        "channel": "voice",
+        "ts": 1790314575.457935
+      },
+      {
+        "role": "user",
+        "text": "Yes, please! That would be amazing. Let's do it.",
+        "channel": "voice",
+        "ts": 1790314575.458067
+      },
+      {
+        "role": "agent",
+        "text": "Great! So here's the thing\u2014you can just talk to me like you'd talk to a friend, anytime. Tell me what you need and I'll handle it once you say yes.\n\nWant to jump in and give it a shot?",
+        "channel": "voice",
+        "ts": 1790314577.662883
+      },
+      {
+        "role": "user",
+        "text": "Yeah, totally! So like, could you remind me if there's anything else coming up this week I should know about? I don't want to miss anything else.",
+        "channel": "voice",
+        "ts": 1790314579.3980422
+      },
+      {
+        "role": "agent",
+        "text": "You've got the field trip due Friday, parent-teacher conference Sunday at four, and picture day next week. I'll keep an eye on all of it.",
+        "channel": "voice",
+        "ts": 1790314581.0377972
+      },
+      {
+        "role": "agent",
+        "text": "You're all set, Maya. Go tackle that week\u2014I've got your back.",
+        "channel": "voice",
+        "ts": 1790314583.643496
+      },
+      {
+        "role": "user",
+        "text": "Perfect! This is going to make my life so much easier. Thanks, Scout!",
+        "channel": "voice",
+        "ts": 1790314583.643592
+      },
+      {
+        "role": "agent",
+        "text": "Happy to be here! Talk soon.",
+        "channel": "voice",
+        "ts": 1790314584.5453708
+      },
+      {
+        "role": "user",
+        "text": "This is gonna be a game-changer for me. Thanks so much, Scout!",
+        "channel": "voice",
+        "ts": 1790314586.0419772
+      },
+      {
+        "role": "agent",
+        "text": "You got it! Catch you later, Maya.",
+        "channel": "voice",
+        "ts": 1790314586.769192
+      }
+    ]
+  }
+]

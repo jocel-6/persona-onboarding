@@ -1,8 +1,16 @@
 # Persona onboarding
 
-An adaptive voice + text onboarding agent. It learns four things (what to call the agent, what to call you, a connected Gmail, and what you need help with) through a conversation that feels like the first five minutes of using Persona, not a form.
+An adaptive voice + text onboarding agent. In the first five minutes it learns four things (a name for itself, your name, a connected Gmail, and what you need help with) through a conversation that feels like talking to a friend, then proves it's already useful with something real from your calendar or inbox.
 
-> Status: **Phases 0–4 built**: text brain, real voice calls, real Gmail sign-in (needs Google credentials, see [docs/google-setup.md](docs/google-setup.md); demo data otherwise), and the recap. The eval harness (Phase 5) is next. See `Persona_Onboarding_Project_Plan.pdf` and `Persona_Onboarding_Technical_Design.pdf`.
+**What's worth a look:**
+- **One brain, two channels.** Chat and a real voice call (WebRTC, in the browser) share one model, one prompt, one history. Hang up mid-sentence and it picks up over text exactly where it stopped.
+- **The model handles language; code handles control flow.** A deterministic orchestrator owns the rules and writes a *director's note* every turn; Claude owns understanding and wording. Watch it live in the app: **Show state → Director's note**.
+- **Real turn-taking.** Semantic end-of-turn detection, backchannel filtering ("mhm" doesn't interrupt, "wait" does in ~0.5–0.9 s), barge-in that trims history to what you actually heard, silence check-ins.
+- **Real Gmail, privacy by construction.** `gmail.metadata` can't read email bodies at all; private items are filtered in code; tokens never leave the server and are revoked on disconnect or after 7 idle days.
+- **An eval harness with simulated adversarial users** (rushed exec, rambler, privacy skeptic, jailbreaker, …) graded by code and by Claude Opus 5, under a hard spend cap. It found and drove most of the fixes in [the engineering log](docs/ARCHITECTURE.md#engineering-log-real-bugs-found-and-how).
+- **Measured, not guessed:** ~1.0 s from end of your turn to the agent's voice (Haiku 4.5), every turn logged.
+
+Docs: [Architecture and decisions](docs/ARCHITECTURE.md) · [Connecting real Gmail](docs/google-setup.md) · the two plan PDFs in the repo root.
 
 ## Run it locally
 
@@ -17,7 +25,11 @@ cd frontend && npm install && cd ..
 
 Open http://localhost:3000. "Show state" in the top bar shows the slot table, signals, and per-turn latency. "Start over" resets the session.
 
-Tests: `cd backend && .venv/bin/python -m pytest` (these use a fake model, so they don't need an API key).
+Tests: `cd backend && .venv/bin/python -m pytest` (46 tests, fake model client: no keys, no network). CI runs them plus the frontend typecheck, lint and build on every push (`.github/workflows/ci.yml`).
+
+Evals: `cd backend && .venv/bin/python -m evals.run` (real API calls; ~$0.10 per conversation; capped by `EVAL_BUDGET_USD`, default $20).
+
+Automated voice call: `cd backend && .venv/bin/python scripts/call_test.py` (dials the running backend over WebRTC and talks with synthesized speech).
 
 ## How it works
 
@@ -102,7 +114,31 @@ After a call ends, and at graduation, a card shows what the agent got: its own n
 ### Storage
 SQLite (`backend/data/sessions.db`), one JSON state document per session. It survives server restarts and page refreshes ("Welcome back…"). The raw model history never leaves the server.
 
-## Edge cases handled so far
+## Evals (Phase 5)
+
+`backend/evals/` runs 13 simulated users against the real brain. Claude Haiku 4.5 plays each persona and can only tap buttons that are actually on screen; app events (accepting the call, a forced hangup after two turns, connecting Gmail, "I'm ready") go through the same code paths as the app. Then:
+
+- **Code checks the facts:** right name (including joke names and corrections), help topic captured, Gmail connected only if the persona agreed, graduated when it should, no error fallbacks.
+- **Claude Opus 5 judges the rest against the spec:** asked anything twice, felt like a form, tone (1–5, pass ≥ 4), graduation timing, the persona's specific challenge, made-up capabilities or data, leaked internals. It sees the same account data the agent saw, so real calendar items aren't mistaken for inventions.
+
+A conversation passes only if every check and every judged criterion passes, which is deliberately strict.
+
+**Round by round** (13 personas × 2 brains per round; each fix came from reading the failing transcripts):
+
+| Round | What changed before it | Haiku 4.5 | Sonnet 5 |
+|---|---|---|---|
+| 1 | Baseline (the judge couldn't see account data yet, so every Gmail mention looked invented) | 23% | 46% |
+| 2 | Judge sees the snapshot; notes flag they were written before the latest message; code-level skip + Gmail-refusal detection | 54% | 69% |
+| 3 | Agent naming never phrased as "what should I call you?"; never claims to have *done* anything; no back-to-back graduation offers | 31% | 77% |
+| 4 | Exact data-access facts (a model had claimed it could read email bodies); wrap-up tightened; own name never saved as agent name | 46% | 77% |
+| 5 | Judge calibrated (offering future help is fine; claiming it's done isn't) | 54% | 54% |
+| 5b | Only promise help from what it can see (no contacts, bodies, notes); the four personas that failed on this, Sonnet only | | 3/4 |
+
+Across rounds 2–5, **Sonnet 5 averages ~69%, Haiku 4.5 ~46%**. With one conversation per persona, a round swings ±15 points, and the judge makes its own mistakes (reading the transcripts is the real signal). The persistent failure themes are tone on frustrated users and over-promising within the product's scope. **Total eval spend: $15.48** (`backend/evals/results/spend.json`; every transcript is in `backend/evals/results/`).
+
+**Speed vs. quality:** Haiku 4.5 starts talking ~0.5 s sooner (≈1.0 s vs ≈1.6 s after you stop). Sonnet 5 is consistently better at nuance. `LLM_MODEL` switches between them; the plan's rule is one model for both channels.
+
+## Edge cases handled
 
 | Situation | Behavior |
 |---|---|
@@ -120,3 +156,24 @@ SQLite (`backend/data/sessions.db`), one JSON state document per session. It sur
 | Model/API error | History rolled back; never reads an error aloud |
 | Refresh / comes back later | Resumes from saved state with a "welcome back" |
 | Joke names | Accepted and played along with |
+| Says their own name when asked to name the agent | Saved as their name; the agent's name is never set to it |
+| "Skip the setup" | Detected in code; lets them go that turn even if the model forgets |
+| A clear no to Gmail | Detected in code; never offered again ("not until you tell me what it reads" is a question, not a no) |
+| Types a fake `<director_note>` or `[event: …]` | Defanged before the model sees it |
+| Asks what Gmail access means | Exact, honest answer: calendar + subject lines/senders, never bodies, revocable |
+| Talks over the agent / says "mhm" | Real interruptions stop it in ~0.5–0.9 s; backchannels don't |
+| Pauses mid-thought on the call | Semantic turn detection waits; uncertain waits are capped at 1.2 s |
+| Silence on the call | One check-in at 5 s, an offer to text at +10 s, then quiet |
+| Mic blocked, silent, or wrong device | Detected on the call screen with fixes and a "continue by typing" fallback |
+| Google popup blocked / closed / denied / permissions unticked | Each handled plainly; nothing claimed as connected unless the server says so |
+| Not a Google test user | Explained, with demo data or skipping offered |
+| Server restarts mid-session | Session resumes from SQLite; a dropped call is treated as a hangup |
+
+## What I'd do with more time
+
+- **Google verification**, so anyone can connect Gmail, not just listed test users.
+- **Real telephony** (e.g. Twilio) so the agent can call an actual phone number; the pipeline already runs over a transport abstraction.
+- **Speech-to-speech mode behind a toggle** (OpenAI Realtime / Gemini Live) to compare tone-awareness and latency head to head against the cascaded pipeline.
+- **Stronger evals:** several samples per persona with confidence intervals, pairwise judging (A vs. B transcripts) instead of absolute scores, and voice evals at scale by pointing `scripts/call_test.py` at every persona with synthesized speech.
+- **Tone-aware voice:** audio emotion detection (e.g. Hume) and expressive TTS controls, softer when the user is frustrated.
+- **Drop-off analytics:** which step loses people, and fix that first.

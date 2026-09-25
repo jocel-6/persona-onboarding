@@ -20,6 +20,7 @@ import {
   type TurnUsage,
   type CalendarEvent,
   type Insight,
+  type Tomorrow,
   type VoiceChoice,
   type UiEvent,
 } from "@/lib/api";
@@ -555,6 +556,9 @@ export default function Onboarding() {
                 />
               )}
 
+            {session?.graduated && session.tomorrow && session.gmail_status === "connected" && doneDismissed &&
+              callView === "none" && <TomorrowCard t={session.tomorrow} />}
+
             {session?.pending_event && callView === "none" && (
               <EventConfirmCard
                 event={session.pending_event}
@@ -967,6 +971,36 @@ function CallScreen({
   );
 }
 
+/** #9: tomorrow as Persona sees it, plus the one thing to watch. */
+function TomorrowCard({ t }: { t: Tomorrow }) {
+  return (
+    <div className="card tomorrow">
+      <div className="insights-head">
+        <strong>{t.label}</strong>
+        {t.demo && <span className="small muted">demo</span>}
+      </div>
+      {t.watch && (
+        <p className="tomorrow-watch">
+          <span className="tag-pill conflict">Watch</span> {t.watch}
+        </p>
+      )}
+      {t.items.length ? (
+        <ul className="tomorrow-list">
+          {t.items.map((it, n) => (
+            <li key={n}>
+              <span className="muted">{it.time}</span>
+              <span>{it.title}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="small muted">Nothing on the calendar. A clear day.</p>
+      )}
+      {t.free && <p className="small muted" style={{ margin: 0 }}>Longest free stretch: {t.free}</p>}
+    </div>
+  );
+}
+
 /** #4: hear your Persona say its new name in each voice, and pick one. */
 function VoicePicker({
   agentName,
@@ -1146,9 +1180,9 @@ function InsightsCard({
             <p className="insight-headline">{i.headline}</p>
             {!compact && <p className="small muted insight-detail">{i.detail}</p>}
             <div className="row">
-              {i.action?.type === "add_event" && (
+              {(i.action?.type === "add_event" || i.action?.type === "move_event") && (
                 <button className="primary small" onClick={() => onFix(i)}>
-                  Add to calendar
+                  {i.action.type === "move_event" ? "Move it" : i.kind === "packed" ? "Block it" : "Add to calendar"}
                 </button>
               )}
               <button className="ghost small" onClick={() => onAsk(i)}>
@@ -1185,7 +1219,8 @@ function EventConfirmCard({
     <div className="card event-card">
       <div>
         <p className="small muted" style={{ margin: 0 }}>
-          Add to your {demo ? "demo " : ""}calendar?
+          {event.op === "move" ? "Move this" : "Add to your"} {demo ? "demo " : ""}
+          {event.op === "move" ? "event?" : "calendar?"}
         </p>
         <strong>{event.title}</strong>
         <p className="small" style={{ margin: "2px 0 0" }}>
@@ -1195,7 +1230,7 @@ function EventConfirmCard({
       </div>
       <div className="row">
         <button className="primary" onClick={onAdd}>
-          Add
+          {event.op === "move" ? "Move" : "Add"}
         </button>
         <button className="ghost" onClick={onCancel}>
           Not now
@@ -1340,6 +1375,7 @@ function DonePanel({
         <h2>You&apos;re in.</h2>
         <p className="muted">{s.agent_name} is ready. Here&apos;s what it knows so far; tap anything to fix it.</p>
         <RecapRows {...props} />
+        {s.tomorrow && s.gmail_status === "connected" && <TomorrowCard t={s.tomorrow} />}
         {s.starter_suggestions.length > 0 && (
           <>
             <p className="small muted">Try one of these first:</p>

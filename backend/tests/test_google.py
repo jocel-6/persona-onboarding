@@ -89,8 +89,10 @@ def test_oauth_callback_connects_with_snapshot(monkeypatch):
     st = runtime.store.get(sid)
     assert st.gmail == "margaret@gmail.com" and st.google_name == "Margaret" and st.gmail_status == "connected"
     assert runtime.store.get_tokens(sid)["refresh_token"] == "rt"
-    browser_view = json.dumps(c.get(f"/api/sessions/{sid}").json())
-    assert "account_snapshot" not in browser_view and "Dentist" not in browser_view and "rt" not in json.loads(browser_view)["state"]
+    state_view = c.get(f"/api/sessions/{sid}").json()["state"]
+    # The raw snapshot and tokens never leave the server. (Derived cards like "tomorrow" do show
+    # the user their own events, in their own browser.)
+    assert "account_snapshot" not in state_view and "refresh_token" not in json.dumps(state_view)
 
     # Replayed or forged callback states are rejected.
     assert '"reason": "expired"' in c.get(f"/api/google/callback?state={state_token}&code=abc").text
@@ -262,3 +264,29 @@ def test_one_tap_fix_turns_into_a_confirm_card_not_a_write():
     assert r.status_code == 200 and r.json()["state"]["pending_event"]["title"]
     assert not runtime.store.get(sid).added_events  # proposed only; the confirm card's Add does the write
     assert c.post(f"/api/sessions/{sid}/insights/nope/add").status_code == 404
+
+
+def test_conflict_fix_moves_the_event_only_on_the_tap():
+    c = TestClient(main.app)
+    sid = c.post("/api/sessions", json={"tz": "America/Los_Angeles"}).json()["state"]["session_id"]
+    st = runtime.store.get(sid)
+    st.agent_name, st.help_topic = "Wren", "school stuff"
+    apply_event(st, "gmail_connected", {"demo": True})
+    runtime.store.save(st)
+    conflict = next(i for i in st.insights if i["kind"] == "conflict")
+    assert conflict["action"]["type"] == "move_event" and "fixes it" in conflict["detail"]
+    assert st.tomorrow is None or "items" in st.tomorrow
+
+    pending = c.post(f"/api/sessions/{sid}/insights/{conflict['id']}/add").json()["state"]["pending_event"]
+    assert pending["op"] == "move"
+    moved_before = next(e for e in runtime.store.get(sid).account_snapshot["events"] if e["id"] == pending["event_id"])
+    assert moved_before["start"] != pending["start"]  # nothing moved yet
+
+    from tests.test_brain import FakeClient
+
+    main.brain.client = FakeClient([("Done, pickup's at 6 now.", None, "end_turn")])
+    c.post(f"/api/sessions/{sid}/events", json={"type": "event_confirmed"})
+    st = runtime.store.get(sid)
+    moved = next(e for e in st.account_snapshot["events"] if e["id"] == pending["event_id"])
+    assert moved["start"] == pending["start"] and st.pending_event is None
+    assert not [i for i in st.insights if i["kind"] == "conflict"]  # the fixed problem is gone

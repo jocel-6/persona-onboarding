@@ -39,6 +39,7 @@ export type SessionState = {
   last_director_note: string | null;
   insights: Insight[];
   week_summary: WeekSummary | null;
+  tomorrow: Tomorrow | null;
   pending_event: CalendarEvent | null;
   added_events: CalendarEvent[];
   transcript: Turn[];
@@ -57,10 +58,24 @@ export type Insight = {
   kind: "conflict" | "tight" | "packed" | "deadline" | "prep" | "reply";
   headline: string;
   detail: string;
-  action?: { type: "add_event" } | null;
+  action?: { type: "add_event" | "move_event" | "draft_reply"; suggested_time?: string | null } | null;
 };
 
-export type CalendarEvent = { title: string; when: string; location?: string | null; all_day?: boolean };
+export type CalendarEvent = {
+  title: string;
+  when: string;
+  location?: string | null;
+  all_day?: boolean;
+  op?: "add" | "move";
+};
+
+export type Tomorrow = {
+  label: string;
+  items: { time: string; title: string }[];
+  watch: string | null;
+  free: string | null;
+  demo: boolean;
+};
 
 export type UiEvent =
   | { type: "name_suggestions"; names: string[] }

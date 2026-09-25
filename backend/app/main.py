@@ -141,14 +141,19 @@ async def _add_pending_event(session_id: str) -> str:
     ev = state.pending_event
     if not ev:
         return "none"
+    moving = ev.get("op") == "move"
     if state.gmail_demo or settings.gmail_stub:
-        return "demo_added"
+        return "demo_moved" if moving else "demo_added"
     tokens = store.get_tokens(session_id)
     if not tokens or not google.can_add_events(tokens):
         return "needs_permission"
     try:
         tokens = await google.fresh_access_token(settings.google_client_id, settings.google_client_secret, tokens)
         store.save_tokens(session_id, tokens)
+        if moving:
+            await google.move_event(tokens["access_token"], ev["event_id"], ev["start"], ev["end"], ev["tz"])
+            log.info("calendar event moved for session %s", session_id[:8])
+            return "moved"
         await google.insert_event(tokens["access_token"], ev)
         log.info("calendar event added for session %s", session_id[:8])
         return "added"
@@ -288,11 +293,13 @@ async def insight_add(session_id: str, insight_id: str) -> dict[str, Any]:
         state = _load(session_id)
         ins = next((i for i in state.insights if i.get("id") == insight_id), None)
         action = (ins or {}).get("action") or {}
-        if action.get("type") != "add_event":
+        if action.get("type") not in ("add_event", "move_event"):
             raise HTTPException(404, "nothing to add for that finding")
         event, reason = validation.check_event(action["event"], state.user_tz)
         if event is None:
             raise HTTPException(422, reason)
+        if action["type"] == "move_event":
+            event = {**event, "op": "move", "event_id": action["event"]["event_id"]}
         state.pending_event = event
         store.save(state)
         return {"state": state.public_view()}

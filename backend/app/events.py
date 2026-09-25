@@ -177,6 +177,17 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
         if not ev:
             return None, ui
         result = str(data.get("result") or "error")
+        if result in ("moved", "demo_moved"):
+            state.pending_event = None
+            snap_events = (state.account_snapshot or {}).get("events", [])
+            for e in snap_events:
+                if e.get("id") == ev.get("event_id"):
+                    e["start"], e["end"] = ev["start"], ev["end"]
+            orch.refresh_insights(state)  # the conflict it fixed drops off the list
+            orch.add_event_turn(state, f"Moved {ev['title']} to {ev['when']}")
+            ui.append({"type": "event_added", "event": ev})
+            where = "on the demo calendar" if result == "demo_moved" else ""
+            return f"they tapped Move: {ev['title']!r} is now {ev['when']} {where}. Confirm in one short line.", ui
         if result in ("added", "demo_added"):
             state.pending_event = None
             state.added_events.append({**ev, "demo": result == "demo_added"})

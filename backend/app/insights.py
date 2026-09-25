@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 from .google import user_zone
@@ -86,6 +86,40 @@ def _time(dt: datetime) -> str:
     return dt.strftime("%-I:%M%p").lower().replace(":00", "")
 
 
+def _free_windows(timed: list[dict], day: date, tz, start_h: int = 8, end_h: int = 21) -> list[tuple[datetime, datetime]]:
+    """Gaps in a day's calendar between start_h and end_h."""
+    cur = datetime.combine(day, time(start_h), tzinfo=tz)
+    day_end = datetime.combine(day, time(end_h), tzinfo=tz)
+    windows = []
+    for e in sorted((e for e in timed if e["start"].date() == day), key=lambda e: e["start"]):
+        if e["start"] > cur:
+            windows.append((cur, min(e["start"], day_end)))
+        cur = max(cur, e["end"])
+    if cur < day_end:
+        windows.append((cur, day_end))
+    return [(a, b) for a, b in windows if b > a]
+
+
+def _round_up(dt: datetime, minutes: int = 15) -> datetime:
+    extra = (-dt.minute) % minutes
+    return (dt + timedelta(minutes=extra)).replace(second=0, microsecond=0)
+
+
+def _slot(timed: list[dict], day: date, tz, minutes: int, not_before: datetime | None = None,
+          latest_start_h: int = 21, earliest_h: int = 8) -> datetime | None:
+    """The first free start on `day` with room for `minutes`, at or after not_before."""
+    for a, b in _free_windows(timed, day, tz, earliest_h):
+        start = _round_up(max(a, not_before) if not_before else a)
+        if start + timedelta(minutes=minutes) <= b and start.hour < latest_start_h:
+            return start
+    return None
+
+
+def _range(a: datetime, b: datetime) -> str:
+    t0, t1 = _time(a), _time(b)
+    return f"{t0[:-2] if t0[-2:] == t1[-2:] else t0}–{t1}"
+
+
 def resolve_date(text: str, today: date) -> date | None:
     """'due Friday' / 'tomorrow' / 'Oct 3' / '10/3' -> the next such date on or after today."""
     t = text.lower()
@@ -138,7 +172,7 @@ def find_insights(
             continue
         all_day = len(e.get("start", "")) == 10
         end = _parse(e.get("end"), tz) or (start + timedelta(days=1) if all_day else start + timedelta(hours=1))
-        events.append({"title": e["title"], "start": start, "end": end, "all_day": all_day})
+        events.append({"title": e["title"], "start": start, "end": end, "all_day": all_day, "id": e.get("id")})
     events.sort(key=lambda e: e["start"])
     timed = [e for e in events if not e["all_day"]]
     emails = snapshot.get("emails", [])
@@ -166,16 +200,37 @@ def find_insights(
                     continue  # one headline per clash is plenty
                 overlap = int((a["end"] - b["start"]).total_seconds() // 60)
                 conflicted.update({id(a), id(b)})
+                minutes = int((b["end"] - b["start"]).total_seconds() // 60)
+                others = [e for e in timed if e is not b]
+                new = _slot(others, b["start"].date(), tz, minutes, not_before=a["end"] + timedelta(minutes=10))
+                fix, fix_text = None, ""
+                if new and b.get("id"):
+                    fix = {"type": "move_event", "event": {
+                        "title": b["title"], "event_id": b["id"],
+                        "start": new.strftime("%Y-%m-%dT%H:%M"), "duration_minutes": minutes,
+                    }}
+                    fix_text = f" Moving {b['title']} to {_range(new, new + timedelta(minutes=minutes))} fixes it."
                 out.append(Insight(
                     kind="conflict",
                     headline=f"{a['title']} runs into {b['title']} {day}",
                     detail=f"{a['title']} ends at {_time(a['end'])} but {b['title']} starts at {_time(b['start'])}: "
-                           f"a {overlap}-minute overlap.",
+                           f"a {overlap}-minute overlap.{fix_text}",
                     score=90 + soon_bonus(a["start"]) + topic_bonus(a["title"], b["title"]),
                     when=b["start"],
+                    action=fix,
                 ))
             elif (a["end"] - a["start"]) >= timedelta(minutes=30) and (b["end"] - b["start"]) >= timedelta(minutes=30):
+                minutes = int((b["end"] - b["start"]).total_seconds() // 60)
+                pushed = b["start"] + timedelta(minutes=15)
+                clear = not any(
+                    e is not b and e["start"] < pushed + timedelta(minutes=minutes) and e["end"] > pushed for e in timed
+                )
+                fix = {"type": "move_event", "event": {
+                    "title": b["title"], "event_id": b["id"],
+                    "start": pushed.strftime("%Y-%m-%dT%H:%M"), "duration_minutes": minutes,
+                }} if clear and b.get("id") else None
                 out.append(Insight(
+                    action=fix,
                     kind="tight",
                     headline=f"No gap between {a['title']} and {b['title']} {day}",
                     detail=f"{a['title']} ends at {_time(a['end'])} and {b['title']} starts right after, "
@@ -192,12 +247,17 @@ def find_insights(
     if busiest and len(busiest[1]) >= 4:
         d, evs = busiest
         span = f"{_time(evs[0]['start'])} to {_time(max(e['end'] for e in evs))}"
+        brk = _slot(timed, d, tz, 30, not_before=datetime.combine(d, time(11), tzinfo=tz), latest_start_h=16)
         out.append(Insight(
             kind="packed",
             headline=f"{_day_label(d, today).capitalize()} is packed: {len(evs)} things, {span}",
-            detail="Worth protecting a break, or moving whatever's flexible.",
+            detail=(f"Blocking {_range(brk, brk + timedelta(minutes=30))} for a real break keeps the day from "
+                    "swallowing it." if brk else "Worth moving whatever's flexible."),
             score=55 + soon_bonus(evs[0]["start"]),
             when=evs[0]["start"],
+            action={"type": "add_event", "event": {
+                "title": "Protected break", "start": brk.strftime("%Y-%m-%dT%H:%M"), "duration_minutes": 30,
+            }} if brk else None,
         ))
 
     # deadlines in the inbox that aren't on the calendar
@@ -261,11 +321,20 @@ def find_insights(
     for m in emails:
         subject, sender = m.get("subject", ""), m.get("from", "")
         if subject.lower().startswith("re:") and _ASK_RE.search(subject) and not _ORG_RE.search(sender):
+            day = resolve_date(subject, today)
+            free = ""
+            if day:
+                windows = [(a, b) for a, b in _free_windows(timed, day, tz, 10, 20) if b - a >= timedelta(hours=1)]
+                if windows:
+                    a, b = max(windows, key=lambda w: w[1] - w[0])
+                    b = min(b, a + timedelta(hours=2))  # a concrete slot to offer, not "all day"
+                    free = f"{_day_label(day, today).capitalize()} {_range(a, b)}"
             out.append(Insight(
                 kind="reply",
                 headline=f"{sender} might be waiting on you: “{re.sub(r'^re:\s*', '', subject, flags=re.I)}”",
-                detail="It's a reply thread with an open question.",
+                detail=f"It's a reply thread with an open question.{f' You are free {free}.' if free else ''}",
                 score=60 + topic_bonus(subject),
+                action={"type": "draft_reply", "email_index": emails.index(m), "suggested_time": free or None},
             ))
 
     out.sort(key=lambda x: -x.score)
@@ -302,5 +371,41 @@ def week_summary(snapshot: dict[str, Any] | None, *, tz_name: str | None = None,
         "busiest_day": _day_label(busiest[0], now.date()).capitalize() if busiest else None,
         "busiest_count": busiest[1] if busiest else 0,
         "emails_scanned": len(snapshot.get("emails", [])),
+        "demo": bool(snapshot.get("demo")),
+    }
+
+
+def tomorrow_at_a_glance(
+    snapshot: dict[str, Any] | None, insights: list[dict[str, Any]], *, tz_name: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    """#9: tomorrow as Persona sees it, plus the one thing to watch. Pure code, no model call."""
+    if not snapshot:
+        return None
+    tz = user_zone(tz_name)
+    now = (now or datetime.now(timezone.utc)).astimezone(tz)
+    day = now.date() + timedelta(days=1)
+    timed, all_day = [], []
+    for e in snapshot.get("events", []):
+        s = _parse(e.get("start"), tz)
+        if not s or s.date() != day:
+            continue
+        if len(e.get("start", "")) == 10:
+            all_day.append(e["title"])
+        else:
+            end = _parse(e.get("end"), tz) or s + timedelta(hours=1)
+            timed.append({"title": e["title"], "start": s, "end": end})
+    timed.sort(key=lambda e: e["start"])
+    watch = next(
+        (i["headline"] for i in insights if i.get("when") and i["when"][:10] == day.isoformat()), None
+    )
+    windows = [(a, b) for a, b in _free_windows(timed, day, tz, 9, 18) if b - a >= timedelta(minutes=45)]
+    longest = max(windows, key=lambda w: w[1] - w[0], default=None)
+    return {
+        "label": f"Tomorrow, {day.strftime('%a %b %-d')}",
+        "items": [{"time": _range(e["start"], e["end"]), "title": e["title"]} for e in timed]
+                 + [{"time": "All day", "title": t} for t in all_day],
+        "watch": watch,
+        "free": _range(*longest) if longest else None,
         "demo": bool(snapshot.get("demo")),
     }

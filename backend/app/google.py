@@ -155,6 +155,18 @@ async def insert_event(access_token: str, event: dict[str, Any]) -> dict[str, An
         return r.json()
 
 
+async def move_event(access_token: str, event_id: str, start: str, end: str, tz: str) -> dict[str, Any]:
+    """Reschedule one of their own events. Only ever called after the user tapped Move on screen."""
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.patch(
+            f"{CALENDAR_URL}/{event_id}",
+            json={"start": {"dateTime": start, "timeZone": tz}, "end": {"dateTime": end, "timeZone": tz}},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        r.raise_for_status()
+        return r.json()
+
+
 async def revoke(token: str) -> None:
     try:
         async with httpx.AsyncClient(timeout=10) as c:
@@ -210,7 +222,11 @@ async def fetch_snapshot(access_token: str) -> dict[str, Any]:
                 start = ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date")
                 end = ev.get("end", {}).get("dateTime") or ev.get("end", {}).get("date")
                 if title and start and not is_private(title):
-                    snap["events"].append({"title": title[:80], "start": start, **({"end": end} if end else {})})
+                    snap["events"].append({
+                        "title": title[:80], "start": start, **({"end": end} if end else {}),
+                        # Only events they own can be moved for them.
+                        **({"id": ev["id"]} if ev.get("id") and (ev.get("organizer") or {}).get("self") else {}),
+                    })
                 if len(snap["events"]) >= MAX_EVENTS:
                     break
         except httpx.HTTPError as e:
@@ -268,7 +284,9 @@ def demo_snapshot(now: datetime | None = None, tz_name: str | None = None) -> di
 
     def ev(title: str, days: int, h: int, m: int, mins: int) -> dict[str, str]:
         start = (now + timedelta(days=days)).replace(hour=h, minute=m, second=0, microsecond=0)
-        return {"title": title, "start": start.isoformat(), "end": (start + timedelta(minutes=mins)).isoformat()}
+        slug = re.sub(r"[^a-z]+", "-", title.lower()).strip("-")
+        return {"title": title, "start": start.isoformat(), "end": (start + timedelta(minutes=mins)).isoformat(),
+                "id": f"demo-{slug}"}
 
     # A realistic week with problems worth noticing: a packed Thursday where two things
     # collide and two run back to back, a Friday deadline that's only in the inbox, a

@@ -70,7 +70,8 @@ class OnboardingState(BaseModel):
     # "Persona noticed": problems found in their calendar/inbox by app/insights.py, best first.
     insights: list[dict[str, Any]] = Field(default_factory=list)
     hunch_done: bool = False
-    week_summary: dict[str, Any] | None = None  # counts only, for the living profile  # offered a non-obvious "I bet..." problem from what they said
+    week_summary: dict[str, Any] | None = None  # counts only, for the living profile
+    tomorrow: dict[str, Any] | None = None  # "tomorrow at a glance" card (their own events, shown to them)  # offered a non-obvious "I bet..." problem from what they said
     pending_event: dict[str, Any] | None = None
     added_events: list[dict[str, Any]] = Field(default_factory=list)
 

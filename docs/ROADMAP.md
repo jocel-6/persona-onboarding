@@ -12,7 +12,7 @@ Ideas beyond the take-home spec, chosen to make the consumer experience better a
 | 2 | **Instant acknowledgements.** Pre-rendered "mm-hm / got it / oh nice" clips in the agent's voice play the moment the user stops, while the real reply is written. | The gap after you speak disappears | ✅ |
 | 3 | **Tone-matched voice.** Cartesia emotion/speed controls follow the mood the app already detects: softer and slower when frustrated, brighter when excited. | It sounds like it's reading the room | ✅ |
 | 4 | **Pick its voice when you name it.** Three short samples in the naming step. | A second "this is mine" moment | ✅ |
-| 5 | **Hear tone, not just words.** Audio emotion analysis (Hume) feeds the director's note. | Notices stress even behind polite words | ⬜ |
+| 5 | **Hear tone, not just words.** Audio emotion analysis (Hume) feeds the director's note. | Notices stress even behind polite words | 🔑 |
 
 > #1 runs on Deepgram Flux (`STT_ENGINE=flux`): conversational speech-to-text with its own turn detection and early end-of-turn predictions. It's opt-in until verified on live calls; the default stays Nova-3 + Smart Turn.
 
@@ -44,11 +44,13 @@ Ideas beyond the take-home spec, chosen to make the consumer experience better a
 
 | # | Idea | Why | Status |
 |---|---|---|---|
-| 15 | **Voice evals at scale.** All personas through real audio calls; transcription accuracy and latency distributions. | Proves the voice path, not just text | ⬜ |
+| 15 | **Voice evals at scale.** All personas through real audio calls; transcription accuracy and latency distributions. | Proves the voice path, not just text | ✅ |
 | 16 | **Metrics dashboard.** Latency p50/p90, cost per conversation, onboarding funnel and drop-off. | The plan's "learn from drop-off" item | ✅ |
 | 17 | **Quality gate in CI.** A small eval subset on demand/for PRs that blocks regressions. | Quality that can't silently slip | 🔑 |
 
 > #17 needs the Anthropic key as a GitHub secret (repo → Settings → Secrets and variables → Actions → `ANTHROPIC_API_KEY`). It runs only by hand or on PRs labeled `eval` (~$0.40/run, capped at $2).
+
+> #15 is built and dry-runs by default (`scripts/voice_eval.py`); `--yes` runs it (~$0.15 for all six calls). #5 switches on with `HUME_API_KEY`.
 
 ## Build order
 

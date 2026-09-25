@@ -92,6 +92,8 @@ class Settings:
     silence_checkin_secs: float = field(default_factory=lambda: float(_env("SILENCE_CHECKIN_SECS", "5")))
     silence_offer_text_secs: float = field(default_factory=lambda: float(_env("SILENCE_OFFER_TEXT_SECS", "10")))
 
+    # #5: hear tone of voice (Hume prosody). Off unless a key is set.
+    hume_api_key: str = field(default_factory=lambda: _env("HUME_API_KEY", ""))
     # #16: when set, /api/metrics requires ?token=<this>.
     metrics_token: str = field(default_factory=lambda: _env("METRICS_TOKEN", ""))
     # #6: a deeper, model-driven look at the week after Gmail connects (~$0.01-0.02, once per connection).

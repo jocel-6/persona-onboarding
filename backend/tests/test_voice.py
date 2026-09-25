@@ -175,3 +175,13 @@ def test_speculative_reply_is_held_then_released_on_confirm():
         assert bs._reply_live and bs._t_turn_end is not None
 
     asyncio.run(go())
+
+
+def test_tone_of_voice_summaries_are_plain_and_only_confident():
+    from app.voice.hume import summarize, to_wav
+
+    words, mood = summarize({"Distress": 0.55, "Tiredness": 0.4, "Joy": 0.05, "Awkwardness": 0.9})
+    assert words == "stressed, tired" and mood == "frustrated"  # unknown names ignored, weak ones dropped
+    assert summarize({"Joy": 0.6, "Excitement": 0.5})[1] == "enthusiastic"
+    assert summarize({"Calmness": 0.1}) == (None, None)
+    assert to_wav(b"\x00\x00" * 16000, 16000, 1)[:4] == b"RIFF"

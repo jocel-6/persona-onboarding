@@ -24,6 +24,7 @@ from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnal
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
+    InputAudioRawFrame,
     EagerEndOfTurnCancelFrame,
     TTSSpeakFrame,
     TTSUpdateSettingsFrame,
@@ -106,6 +107,35 @@ def _last_user_text(context: LLMContext) -> str:
     return ""
 
 
+class ToneTap(FrameProcessor):
+    """#5: keeps the last few seconds of the user's audio so their tone can be analyzed."""
+
+    KEEP_SECS = 8.0
+
+    def __init__(self):
+        super().__init__()
+        self._chunks: list[bytes] = []
+        self._bytes = 0
+        self.sample_rate = 16000
+        self.channels = 1
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, InputAudioRawFrame):
+            self.sample_rate, self.channels = frame.sample_rate, frame.num_channels
+            self._chunks.append(frame.audio)
+            self._bytes += len(frame.audio)
+            limit = int(self.KEEP_SECS * self.sample_rate * self.channels * 2)
+            while self._bytes > limit and self._chunks:
+                self._bytes -= len(self._chunks.pop(0))
+        await self.push_frame(frame, direction)
+
+    def last(self, secs: float) -> bytes:
+        pcm = b"".join(self._chunks)
+        n = int(secs * self.sample_rate * self.channels * 2)
+        return pcm[-n:] if n else pcm
+
+
 class ConfidenceTagger(FrameProcessor):
     """Notes words Deepgram wasn't sure about, so the brain can confirm names lightly."""
 
@@ -155,6 +185,7 @@ class BrainService(FrameProcessor):
         self._turn_sentiment = "neutral"
         self._tone: str | None = None
         self._first_audio_via: str | None = None
+        self._voice_tone: str | None = None  # #5: what their voice sounded like last turn
         # Which assistant message / transcript line the last voice turn produced,
         # so a barge-in trims exactly that one (never a later text reply).
         self._last_turn_ref: tuple[int, int] | None = None
@@ -206,6 +237,31 @@ class BrainService(FrameProcessor):
         self._turn = None
         self._speculating = False
         self._held = []
+
+    # ---- #5 tone of voice (in parallel; shapes the next turn) ----------------
+
+    def _listen_to_tone(self, user_text: str) -> None:
+        tap = self.call.tone_tap
+        key = runtime.settings.hume_api_key
+        if not tap or not key:
+            return
+        secs = min(ToneTap.KEEP_SECS, max(1.5, len(user_text.split()) / 2.5 + 0.8))  # ~2.5 words/sec
+        pcm = tap.last(secs)
+        if len(pcm) < tap.sample_rate:  # under half a second: nothing to hear
+            return
+        self.create_task(self._tone_task(key, pcm, tap.sample_rate, tap.channels), name="tone")
+
+    async def _tone_task(self, key: str, pcm: bytes, rate: int, channels: int) -> None:
+        from . import hume
+
+        words, mood = hume.summarize(await hume.analyze(key, hume.to_wav(pcm, rate, channels)))
+        self._voice_tone = words
+        if mood:
+            async with runtime.locks[self.call.session_id]:
+                state = runtime.store.get(self.call.session_id)
+                if state is not None and state.sentiment not in ("frustrated",):
+                    state.sentiment = mood
+                    runtime.store.save(state)
 
     # ---- output: live, or held while speculating --------------------------
 
@@ -284,6 +340,10 @@ class BrainService(FrameProcessor):
                 annotations.append("[you were interrupted: they only heard the start of your last reply]")
             if self.low_confidence:
                 annotations.append(f"[low transcription confidence: {', '.join(dict.fromkeys(self.low_confidence))}]")
+            if self._voice_tone:
+                annotations.append(f"[their voice sounded: {self._voice_tone}]")
+                self._voice_tone = None
+            self._listen_to_tone(user_text)
             self._was_interrupted = False
             self.low_confidence = []
             self._silences = 0
@@ -434,6 +494,7 @@ class VoiceCall:
         self.task: PipelineTask | None = None
         self._greeted = False
         self.stopping = False
+        self.tone_tap: ToneTap | None = None
         self._fallback: asyncio.TimerHandle | None = None
         self._trim_task: asyncio.Task | None = None
 
@@ -524,9 +585,11 @@ class VoiceCall:
         async def _disconnected(_transport, _client):
             await self.stop()
 
+        self.tone_tap = ToneTap() if s.hume_api_key else None
         pipeline = Pipeline(
             [
                 transport.input(),
+                *([self.tone_tap] if self.tone_tap else []),
                 stt,
                 ConfidenceTagger(self),
                 user_agg,

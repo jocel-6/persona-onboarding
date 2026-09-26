@@ -452,17 +452,13 @@ def _priority(state: OnboardingState) -> list[str]:
         ]
 
     if s.channel == "text" and not s.agent_name and not in_call(s):
-        if not s.user_name and s.user_turns == 0:
-            return ["You just asked who they are. Wait for their name."]
-        greet = f"Greet {s.user_name} by name" if s.user_name else "They didn't share their name; that's fine. Greet them warmly"
         return [
-            f"{greet} and introduce yourself as their personal assistant, here for whatever they need (warm, "
-            "at their service, not servile). Then invite them to give you a name if they'd like, clearly optional "
-            f"(otherwise you'll go by {DEFAULT_AGENT_NAME}); a few ideas are on their screen as buttons. Two short "
-            "sentences. Never 'what should I call you?' (that sounds like asking their name). "
-            f"If they pass on naming you, save agent_name={DEFAULT_AGENT_NAME!r}. "
-            "As soon as you have a name, react to it in a few words and, in the same reply, ask if they're up for a "
-            "quick two-minute call right here in the browser, or would rather keep texting."
+            "You invited them to name you, the assistant: optional, and a few ideas are on their screen as buttons. "
+            "Never 'what should I call you?' (that sounds like asking their name), and don't ask their name here: "
+            "the call does that. If they pass on naming you, save "
+            f"agent_name={DEFAULT_AGENT_NAME!r}. As soon as you have a name, react to it in a few words and, in the "
+            "same reply, ask if they're up for a quick two-minute call right here in the browser, or would rather "
+            "keep texting. (If they happen to mention their own name, save it as user_name.)"
         ]
 
     if s.channel == "text" and s.call_status == "not_started":

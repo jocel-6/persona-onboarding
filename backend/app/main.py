@@ -80,11 +80,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# The opener finds out who they are first; naming the assistant comes right after, and is optional.
+# Text only invites naming the assistant (optional). Everything else, starting with the
+# user's own name, is collected on the call (the brief: the call collects all but the agent's name).
 OPENERS = [
-    "Hey! I'm your new Persona. Who am I talking to?",
-    "Hi there! I'm your Persona. First things first, who do I have the pleasure of helping?",
-    "Hey, welcome! I'm your new Persona. What's your name?",
+    "Hey! I'm your new Persona, your personal assistant. Want to give me a name? Totally optional.",
+    "Hi there! I'm your Persona, here for whatever you need. First, want to give me a name? No pressure.",
+    "Hey, welcome! I'm your new personal assistant. Want to name me? Or skip it and I'll go by Nova.",
 ]
 
 # Events that, during a live voice call, should be spoken on the call rather than texted.
@@ -346,8 +347,12 @@ def create_session(body: SessionIn | None = None) -> dict[str, Any]:
         {"role": "assistant", "content": [{"type": "text", "text": opener}]},
     ]
     state.transcript.append(Turn(role="agent", text=opener, channel="text"))
+    from . import orchestrator as orch
+
+    names = orch.name_ideas()
+    state.name_ideas_shown = True
     store.save(state)
-    return {"state": state.public_view(), "ui": [], "config": _config()}
+    return {"state": state.public_view(), "ui": [{"type": "name_suggestions", "names": names}], "config": _config()}
 
 
 @app.get("/api/sessions/{session_id}")

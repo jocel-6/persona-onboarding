@@ -273,12 +273,14 @@ def add_usage(into: dict[str, int], u: dict[str, int]) -> None:
 
 def new_state() -> OnboardingState:
     s = OnboardingState(user_tz="America/Los_Angeles")
-    opener = "Hey! I'm your new Persona. Who am I talking to?"  # same as the app's first opener
+    opener = "Hey! I'm your new Persona, your personal assistant. Want to give me a name? Totally optional."
     s.messages = [
         {"role": "user", "content": [{"type": "text", "text": "[event: the user opened Persona for the first time]"}]},
         {"role": "assistant", "content": [{"type": "text", "text": opener}]},
     ]
+    s.name_ideas_shown = True
     s.transcript.append(Turn(role="agent", text=opener, channel="text"))
+    s.transcript.append(Turn(role="event", text="Name ideas shown as buttons: Juno, Milo, Kai", channel="text"))
     return s
 
 

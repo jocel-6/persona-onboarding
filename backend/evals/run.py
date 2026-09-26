@@ -128,7 +128,7 @@ def render_screen(state: OnboardingState) -> str:
             lines.append(f"  {who}{' (on the call)' if t.channel == 'voice' else ''}: {t.text}")
     buttons = []
     if state.call_status == "offered" and state.channel == "text":
-        buttons += ['"Call me" (accept_call)', '"Keep texting" (decline_call)']
+        buttons += ['"Start call" (accept_call)', '"Keep texting" (decline_call)']
     if state.call_status in ("hung_up", "missed") and not state.graduated:
         buttons.append('"Call me back" (accept_call)')
     if state.gmail_card_shown and state.gmail_status != "connected":
@@ -273,14 +273,13 @@ def add_usage(into: dict[str, int], u: dict[str, int]) -> None:
 
 def new_state() -> OnboardingState:
     s = OnboardingState(user_tz="America/Los_Angeles")
-    opener = "Hey! I'm your new Persona, your personal assistant. Want to give me a name? Totally optional."
+    opener = "Hey! I'm your new Persona. Tap Start call and let's talk, it takes two minutes. Or just type here if you'd rather text."
     s.messages = [
         {"role": "user", "content": [{"type": "text", "text": "[event: the user opened Persona for the first time]"}]},
         {"role": "assistant", "content": [{"type": "text", "text": opener}]},
     ]
-    s.name_ideas_shown = True
+    s.call_status = "offered"  # the app opens straight into the call offer
     s.transcript.append(Turn(role="agent", text=opener, channel="text"))
-    s.transcript.append(Turn(role="event", text="Name ideas shown as buttons: Juno, Milo, Kai", channel="text"))
     return s
 
 

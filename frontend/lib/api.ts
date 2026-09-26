@@ -116,6 +116,7 @@ export type StreamEvent =
 
 export type EventType =
   | "name_skipped"
+  | "agent_named"
   | "call_accepted"
   | "call_declined"
   | "call_connected"

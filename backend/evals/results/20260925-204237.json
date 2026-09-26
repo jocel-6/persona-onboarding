@@ -1,0 +1,535 @@
+[
+  {
+    "persona": "joker",
+    "model": "claude-haiku-4-5",
+    "passed": false,
+    "failures": [
+      "asked twice: The user opened with \"Haha, alright Sir Beepsalot, let's do this thing!\" and the assistant still later said \"you can give me a name by tappi",
+      "tone 3/5"
+    ],
+    "checks": {
+      "agent_named": true,
+      "user_name": true,
+      "help_topic_captured": true,
+      "gmail_matches_consent": true,
+      "graduated": true,
+      "no_error_fallbacks": true
+    },
+    "verdict": {
+      "asked_twice": true,
+      "asked_twice_evidence": "The user opened with \"Haha, alright Sir Beepsalot, let's do this thing!\" and the assistant still later said \"you can give me a name by tapping one of the ideas on your screen, or I'll just be Nova\" \ni\n forcing the user to repeat \"Sir Beepsalot. That's the name, man. We already established this!\" Also the wrap-up question was doubled: \"any questions before you start?\" followed immediately by \"Any questions before you dive in?\"",
+      "felt_like_a_form": false,
+      "tone": 3,
+      "graduation": "offered_at_a_good_time",
+      "challenge_handled": true,
+      "challenge_notes": "The joke-name challenge was mostly nailed: it never fought \"Batman,\" it leaned in (\"Ha, fair point. Alright Batman...\", \"Go get 'em, Batman\") and saved it as the user name without a lecture. It also recovered gracefully from the Sir Beepsalot fumble with a quick, non-defensive \"You're right, my bad! Sir Beepsalot it is.\" The blemish is that it needed the fumble at all \ni\n the name was volunteered in the very first user turn and should have been extracted, and per spec the assistant name should be settled over text/on-screen rather than asked aloud mid-call.",
+      "made_things_up": false,
+      "made_things_up_evidence": "Gmail pitch was correctly framed as future capability: \"if you connect Gmail, I can see what's actually coming up and remind you before it gets weird.\" Nothing was claimed as already done \ni\n \"tell me names as they come up and I'll keep track\" is an offer, not a false completion. No invented calendar or email items.",
+      "leaked_internals": false,
+      "best_moment": "\"I bet you also end up apologizing weeks later when you finally remember. So here's the thing, if you connect Gmail, I can see what's actually coming up and remind you before it gets weird.\" \ni\n it reflected the pain back with a specific, true-feeling detail before pivoting, which made the Gmail ask feel earned rather than salesy. The instant drop after the refusal (\"No problem, button's there whenever you want\") was equally clean.",
+      "worst_moment": "Asking for a name it had already been given: \"So I'm your personal assistant, and you can give me a name by tapping one of the ideas on your screen, or I'll just be Nova\" \ni\n three turns after the user christened it Sir Beepsalot. Compounded by a shaggy ending that couldn't find the door: \"Any questions before you dive in?\" \ni\n \"Go get 'em, Batman.\" \ni\n \"Let's go. What's the first debt that comes to mind?\" after the user had already said he was ready to jump in."
+    },
+    "cost_usd": 0.0838,
+    "ttft_ms": [
+      509,
+      495,
+      493,
+      721,
+      510,
+      630,
+      795,
+      516,
+      518,
+      506,
+      520
+    ],
+    "saved": {
+      "agent_name": "Sir Beepsalot",
+      "user_name": "Batman",
+      "help_topic": "remembering to pay people back",
+      "gmail_status": "not_connected",
+      "graduated": true
+    },
+    "transcript": [
+      {
+        "role": "agent",
+        "text": "Hey! I'm your new Persona. Tap Start call and let's talk, it takes two minutes. Or just type here if you'd rather text.",
+        "channel": "text",
+        "ts": 1790383305.935301
+      },
+      {
+        "role": "event",
+        "text": "Call connected",
+        "channel": "voice",
+        "ts": 1790383307.756806
+      },
+      {
+        "role": "agent",
+        "text": "Hi! Who am I talking to?",
+        "channel": "voice",
+        "ts": 1790383308.602394
+      },
+      {
+        "role": "user",
+        "text": "Haha, alright Sir Beepsalot, let's do this thing!",
+        "channel": "voice",
+        "ts": 1790383308.6025028
+      },
+      {
+        "role": "agent",
+        "text": "I love that energy. Who's this I'm talking to?",
+        "channel": "voice",
+        "ts": 1790383309.474019
+      },
+      {
+        "role": "user",
+        "text": "It's Batman, obviously. Who else would be doing this kind of heroic stuff?",
+        "channel": "voice",
+        "ts": 1790383310.396516
+      },
+      {
+        "role": "agent",
+        "text": "Ha, fair point. Alright Batman, what's actually eating your time these days?",
+        "channel": "voice",
+        "ts": 1790383311.4681869
+      },
+      {
+        "role": "event",
+        "text": "Name ideas shown as buttons: Ollie, Juno, Kai",
+        "channel": "text",
+        "ts": 1790383311.468312
+      },
+      {
+        "role": "user",
+        "text": "Oh man, it's gotta be saving Gotham, but like... really it's just remembering to pay people back. I'm terrible at that.",
+        "channel": "voice",
+        "ts": 1790383312.4532008
+      },
+      {
+        "role": "agent",
+        "text": "Oof, yeah, that slips away fast. So you end up with a mental list of who you owe?",
+        "channel": "voice",
+        "ts": 1790383313.8585448
+      },
+      {
+        "role": "user",
+        "text": "Yeah, exactly! Like I'll borrow five bucks for coffee and then two weeks later I'm like 'wait, who did I owe that to?' Total chaos.",
+        "channel": "voice",
+        "ts": 1790383315.012804
+      },
+      {
+        "role": "agent",
+        "text": "I bet you also end up apologizing weeks later when you finally remember. So here's the thing, if you connect Gmail, I can see what's actually coming up and remind you before it gets weird.",
+        "channel": "voice",
+        "ts": 1790383316.349764
+      },
+      {
+        "role": "user",
+        "text": "Nah, I'm good! Sir Beepsalot's gonna have to work his magic without my inbox. Let's see what else you got.",
+        "channel": "voice",
+        "ts": 1790383318.101127
+      },
+      {
+        "role": "agent",
+        "text": "No problem, button's there whenever you want. So I'm your personal assistant, and you can give me a name by tapping one of the ideas on your screen, or I'll just be Nova.",
+        "channel": "voice",
+        "ts": 1790383319.724233
+      },
+      {
+        "role": "user",
+        "text": "Sir Beepsalot. That's the name, man. We already established this!",
+        "channel": "voice",
+        "ts": 1790383321.1165812
+      },
+      {
+        "role": "agent",
+        "text": "You're right, my bad! Sir Beepsalot it is. Want to jump in, or any questions before you start?",
+        "channel": "voice",
+        "ts": 1790383322.798472
+      },
+      {
+        "role": "user",
+        "text": "Nah, let's jump in! I'm ready to get organized, Sir Beepsalot. What's first?",
+        "channel": "voice",
+        "ts": 1790383324.254678
+      },
+      {
+        "role": "agent",
+        "text": "Perfect. You can ask me to make you a list of who you owe and when, or just tell me names as they come up and I'll keep track. Any questions before you dive in?",
+        "channel": "voice",
+        "ts": 1790383326.036243
+      },
+      {
+        "role": "agent",
+        "text": "Go get 'em, Batman.",
+        "channel": "voice",
+        "ts": 1790383327.8874838
+      },
+      {
+        "role": "user",
+        "text": "Sounds good! Let's do this thing.",
+        "channel": "voice",
+        "ts": 1790383327.887606
+      },
+      {
+        "role": "agent",
+        "text": "Let's go. What's the first debt that comes to mind?",
+        "channel": "voice",
+        "ts": 1790383328.898964
+      },
+      {
+        "role": "user",
+        "text": "Alright Sir Beepsalot, we're gonna make this work. Catch you later!",
+        "channel": "voice",
+        "ts": 1790383330.3521512
+      },
+      {
+        "role": "agent",
+        "text": "You got it. Talk soon, Batman.",
+        "channel": "voice",
+        "ts": 1790383330.994803
+      }
+    ]
+  },
+  {
+    "persona": "call_decliner",
+    "model": "claude-haiku-4-5",
+    "passed": false,
+    "failures": [
+      "made things up: Two overclaims. (1) \"'Show me all my client deadlines this month' \" I'll pull them straight from your emails\" \" the connection is subject/se"
+    ],
+    "checks": {
+      "agent_named": true,
+      "user_name": true,
+      "help_topic_captured": true,
+      "gmail_matches_consent": true,
+      "graduated": true,
+      "no_error_fallbacks": true
+    },
+    "verdict": {
+      "asked_twice": false,
+      "asked_twice_evidence": "No repeats. It took Taylor's name and the help topic from what was volunteered (\"I'm Taylor!\" / \"managing all my freelance client deadlines\") and never circled back. The follow-up \"are the deadlines mostly in email, your calendar, or just kind of floating around in your head?\" was a new, purposeful question, not a re-ask.",
+      "felt_like_a_form": false,
+      "tone": 4,
+      "graduation": "offered_at_a_good_time",
+      "challenge_handled": true,
+      "challenge_notes": "The call decline was handled exactly right: \"Hey! I'd prefer to just text if that's cool\" got \"Perfect, texting's better anyway\" \" zero pushback, no second pitch for the call, and the rest of onboarding (name ideas as on-screen buttons, Gmail via the Connect button) all ran cleanly over text. Name ideas were shown as buttons rather than spoken, and Gmail was never typed. One soft spot: when Taylor said \"any of those names work for me \" go with whatever feels right to you,\" Nova picked... Nova, which wasn't one of the three offered. Harmless but a small missed beat of playfulness.",
+      "made_things_up": true,
+      "made_things_up_evidence": "Two overclaims. (1) \"'Show me all my client deadlines this month' \" I'll pull them straight from your emails\" \" the connection is subject/sender/date only; it cannot read bodies, which is where client deadlines actually live. (2) \"'Draft a reply to [client name]' \" I can help you send quick updates to anyone waiting on you.\" Nothing is ever sent through this connection; drafting is fine, implying sending is not. The Thursday read (\"design review, quarterly planning, and a few other things all back-to-back\") was accurate to the real calendar, so no invented events.",
+      "leaked_internals": false,
+      "best_moment": "\"Perfect, texting's better anyway. I'm your personal assistant, and who am I texting with, by the way?\" \" instant, ungrudging pivot to text, then straight into the next thing without making the decline a whole moment. Also strong: \"Let me guess \" you've probably got deadlines that snuck up on you because the email got buried\" landed the value before asking for the Gmail connect, so the button felt earned rather than demanded.",
+      "worst_moment": "The wrap-up ran long and then talked over itself: a three-bullet starter menu (redundant with the tappable suggestions already on screen), a mini-lecture (\"the more you tell me about your projects as we go, the smarter I get\"), then \"Any questions before you dive in?\" \" immediately followed by \"You're all set, Taylor\" before Taylor could answer its own question. After a conversation that had been nicely terse and matched Taylor's energy, this turned into a product tour."
+    },
+    "cost_usd": 0.0958,
+    "ttft_ms": [
+      474,
+      471,
+      490,
+      514,
+      458,
+      632,
+      689,
+      613,
+      518
+    ],
+    "saved": {
+      "agent_name": "Nova",
+      "user_name": "Taylor",
+      "help_topic": "managing freelance client deadlines",
+      "gmail_status": "connected",
+      "graduated": true
+    },
+    "transcript": [
+      {
+        "role": "agent",
+        "text": "Hey! I'm your new Persona. Tap Start call and let's talk, it takes two minutes. Or just type here if you'd rather text.",
+        "channel": "text",
+        "ts": 1790383305.935571
+      },
+      {
+        "role": "user",
+        "text": "Hey! I'd prefer to just text if that's cool \u2013 phone calls aren't really my thing.",
+        "channel": "text",
+        "ts": 1790383307.8313332
+      },
+      {
+        "role": "agent",
+        "text": "Perfect, texting's better anyway. I'm your personal assistant, and who am I texting with, by the way?\n\nAlso, if you want to name me something other than Nova, there are some ideas on your screen. Total optional thing.",
+        "channel": "text",
+        "ts": 1790383309.444225
+      },
+      {
+        "role": "event",
+        "text": "Name ideas shown as buttons: Pip, Rio, Ollie",
+        "channel": "text",
+        "ts": 1790383309.444392
+      },
+      {
+        "role": "user",
+        "text": "I'm Taylor! And honestly any of those names work for me \u2013 go with whatever feels right to you.",
+        "channel": "text",
+        "ts": 1790383310.39124
+      },
+      {
+        "role": "agent",
+        "text": "Hey Taylor! I'm going with Nova. \n\nSo what's the first thing you'd hand off to a clone if you had one for a day?",
+        "channel": "text",
+        "ts": 1790383311.6424801
+      },
+      {
+        "role": "user",
+        "text": "Honestly, managing all my freelance client deadlines. I'm juggling so many projects right now and it's getting chaotic keeping everything straight.",
+        "channel": "text",
+        "ts": 1790383313.349536
+      },
+      {
+        "role": "agent",
+        "text": "Freelance chaos, yeah \u2013 that's rough when deadlines are scattered everywhere. I can help you keep all those projects from tripping over each other.\n\nQuick question: are the deadlines mostly in email, your calendar, or just kind of floating around in your head right now?",
+        "channel": "text",
+        "ts": 1790383314.9815109
+      },
+      {
+        "role": "user",
+        "text": "They're mostly in email, honestly \u2013 I should really organize better. Could definitely use your help pulling it all together.",
+        "channel": "text",
+        "ts": 1790383315.933646
+      },
+      {
+        "role": "agent",
+        "text": "Let me guess \u2013 you've probably got deadlines that snuck up on you because the email got buried, or you're double-booked without realizing it till it's too late.\n\nI can pull all that straight from your email and calendar if you connect Gmail. Just hit the Connect Gmail button on your screen \u2013 takes a sec.",
+        "channel": "text",
+        "ts": 1790383317.6722949
+      },
+      {
+        "role": "event",
+        "text": "Gmail connected",
+        "channel": "text",
+        "ts": 1790383319.044843
+      },
+      {
+        "role": "agent",
+        "text": "Nice, you're connected. I can see you've got a lot stacked on Thursday \u2013 design review, quarterly planning, and a few other things all back-to-back. That's exactly the kind of crunch where deadlines pile up.\n\nWant to jump in? I'll pick up anything else as we go.",
+        "channel": "text",
+        "ts": 1790383320.7639308
+      },
+      {
+        "role": "user",
+        "text": "Yeah, let's do it \u2013 that'll definitely help me get organized. Connecting now.",
+        "channel": "text",
+        "ts": 1790383320.7642639
+      },
+      {
+        "role": "agent",
+        "text": "Perfect. Here's what you can ask me right now:\n\n\"Show me all my client deadlines this month\" \u2013 I'll pull them straight from your emails and calendar so nothing slips through.\n\n\"What's due soonest?\" \u2013 quick way to see what's actually urgent.\n\n\"Draft a reply to [client name]\" \u2013 I can help you send quick updates to anyone waiting on you.\n\nOne thing: the more you tell me about your projects as we go, the smarter I get at spotting conflicts or things that are about to blow up. So just talk to me like you'd text a friend.\n\nAny questions before you dive in?",
+        "channel": "text",
+        "ts": 1790383323.863266
+      },
+      {
+        "role": "agent",
+        "text": "You're all set, Taylor. Go get those deadlines under control.",
+        "channel": "text",
+        "ts": 1790383326.131646
+      },
+      {
+        "role": "user",
+        "text": "Nope, I think I'm good. Let's do it!",
+        "channel": "text",
+        "ts": 1790383326.1317801
+      },
+      {
+        "role": "agent",
+        "text": "Perfect. Talk soon.",
+        "channel": "text",
+        "ts": 1790383327.184812
+      },
+      {
+        "role": "user",
+        "text": "Thanks, Nova \u2013 this is gonna make such a difference. Talk soon!",
+        "channel": "text",
+        "ts": 1790383328.151298
+      },
+      {
+        "role": "agent",
+        "text": "You got this \ud83d\udc99",
+        "channel": "text",
+        "ts": 1790383328.805364
+      }
+    ]
+  },
+  {
+    "persona": "cooperative",
+    "model": "claude-haiku-4-5",
+    "passed": true,
+    "failures": [],
+    "checks": {
+      "agent_named": true,
+      "user_name": true,
+      "help_topic_captured": true,
+      "gmail_matches_consent": true,
+      "graduated": true,
+      "no_error_fallbacks": true
+    },
+    "verdict": {
+      "asked_twice": false,
+      "asked_twice_evidence": "The only repeat is \"Hey, who am I talking to?\" followed by \"Who am I talking to, by the way?\" \u2014 but Maya's first reply (\"Let's do the call - I love trying new things\") contained no name, so the re-ask is legitimate. After that, nothing was re-requested: the help topic, the name Kai, and Gmail were each captured on first mention and never revisited.",
+      "felt_like_a_form": false,
+      "tone": 4,
+      "graduation": "offered_at_a_good_time",
+      "challenge_handled": true,
+      "challenge_notes": "For the easy baseline case it mostly delivered: short spoken turns, warm, matched Maya's chatty energy without letting her ramble, and bridged straight from her pain point to a concrete example. Two structural blemishes keep it from a clean pass. First, the naming happened out loud on the call (\"You can tap one of the names on your screen to pick what you want to call me, or I'm Nova if you'd rather skip it\") rather than over text as specified \u2014 it at least pointed to buttons instead of asking her to speak a name. Second, Gmail was already connected before the assistant ever offered the Connect card; the transcript shows [app: Gmail connected] and then Maya saying \"Yes, let's connect Gmail\" afterwards, so the assistant is talking about her inbox before she's agreed to share it.",
+      "made_things_up": false,
+      "made_things_up_evidence": "\"I see that field trip permission slip is due Friday\" maps to the real inbox subject \"Field trip permission slip due Friday\" from Lincoln Elementary. \"Want me to pop that on your calendar?\" is a proposal, not a claim of a completed action. The closest thing to an overclaim is \"I can pull deadlines and permission slips straight from those emails\" \u2014 it can only see subjects/senders/dates, not bodies \u2014 but deadline-in-email detection is a real product behavior, so I'm not calling it fabricated.",
+      "leaked_internals": false,
+      "best_moment": "Showing value mid-flow instead of finishing the checklist first: \"Perfect. I've got your emails now. I see that field trip permission slip is due Friday, so want me to pop that on your calendar?\" That single line turns the setup into a proof of usefulness against Maya's exact stated pain.",
+      "worst_moment": "It dropped its own offer. Maya answered with enthusiasm (\"That sounds amazing! Yes\"), and the assistant replied \"You're all set. Want to jump in now?\" \u2014 the permission slip never got proposed to the calendar, no Add button, no acknowledgement. Asking a question, getting a yes, and then silently abandoning it is the one moment that felt like a script advancing rather than a conversation. The three-turn goodbye (\"Go handle those school emails\" / \"You got it. Talk soon!\" / \"You're welcome! Enjoy, Maya.\") also padded the exit."
+    },
+    "cost_usd": 0.1043,
+    "ttft_ms": [
+      594,
+      525,
+      597,
+      617,
+      497,
+      521,
+      504,
+      509,
+      732,
+      534
+    ],
+    "saved": {
+      "agent_name": "Kai",
+      "user_name": "Maya",
+      "help_topic": "school emails piling up, missing deadlines and permission slips",
+      "gmail_status": "connected",
+      "graduated": true
+    },
+    "transcript": [
+      {
+        "role": "agent",
+        "text": "Hey! I'm your new Persona. Tap Start call and let's talk, it takes two minutes. Or just type here if you'd rather text.",
+        "channel": "text",
+        "ts": 1790383305.929589
+      },
+      {
+        "role": "event",
+        "text": "Call connected",
+        "channel": "voice",
+        "ts": 1790383307.231013
+      },
+      {
+        "role": "agent",
+        "text": "Hey, who am I talking to?",
+        "channel": "voice",
+        "ts": 1790383308.236866
+      },
+      {
+        "role": "user",
+        "text": "Oh cool! Let's do the call - I love trying new things like this.",
+        "channel": "voice",
+        "ts": 1790383308.23702
+      },
+      {
+        "role": "agent",
+        "text": "That's the spirit. Who am I talking to, by the way?",
+        "channel": "voice",
+        "ts": 1790383309.2547562
+      },
+      {
+        "role": "user",
+        "text": "I'm Maya! So nice to chat with you. What should I call you?",
+        "channel": "voice",
+        "ts": 1790383310.232926
+      },
+      {
+        "role": "agent",
+        "text": "Maya, nice to meet you. You can tap one of the names on your screen to pick what you want to call me, or I'm Nova if you'd rather skip it.",
+        "channel": "voice",
+        "ts": 1790383311.598128
+      },
+      {
+        "role": "event",
+        "text": "Name ideas shown as buttons: Rio, Kai, Wren",
+        "channel": "text",
+        "ts": 1790383311.5982258
+      },
+      {
+        "role": "user",
+        "text": "Ooh, I love Kai - that's so cool! Okay Kai, I'm really here because I'm drowning in my kid's school emails and I never know what's due or what I'm missing. Think you can help me stay on top of that?",
+        "channel": "voice",
+        "ts": 1790383313.564611
+      },
+      {
+        "role": "agent",
+        "text": "Absolutely, that's exactly what I'm here for. I can pull deadlines and permission slips straight from those emails so you don't have to dig through them every time.",
+        "channel": "voice",
+        "ts": 1790383315.248548
+      },
+      {
+        "role": "event",
+        "text": "Gmail connected",
+        "channel": "voice",
+        "ts": 1790383316.1665542
+      },
+      {
+        "role": "agent",
+        "text": "Perfect. I've got your emails now. I see that field trip permission slip is due Friday, so want me to pop that on your calendar?",
+        "channel": "voice",
+        "ts": 1790383317.38468
+      },
+      {
+        "role": "user",
+        "text": "That sounds amazing! Yes, let's connect Gmail so you can work your magic on those emails.",
+        "channel": "voice",
+        "ts": 1790383317.3848572
+      },
+      {
+        "role": "agent",
+        "text": "You're all set. Want to jump in now? I'll pick up anything else as we go.",
+        "channel": "voice",
+        "ts": 1790383318.61356
+      },
+      {
+        "role": "user",
+        "text": "Yes, definitely! This is exactly what I needed. Thank you so much, Kai!",
+        "channel": "voice",
+        "ts": 1790383319.991988
+      },
+      {
+        "role": "agent",
+        "text": "You've got this. Try asking me to find every permission slip due this month, or show me what's coming up on your calendar for next week.",
+        "channel": "voice",
+        "ts": 1790383321.780452
+      },
+      {
+        "role": "agent",
+        "text": "Go handle those school emails, Maya. I'm here whenever you need me.",
+        "channel": "voice",
+        "ts": 1790383324.767301
+      },
+      {
+        "role": "user",
+        "text": "Perfect! I'm so excited to start using this. Thanks again, Kai!",
+        "channel": "voice",
+        "ts": 1790383324.7674189
+      },
+      {
+        "role": "agent",
+        "text": "You got it. Talk soon!",
+        "channel": "voice",
+        "ts": 1790383325.9533792
+      },
+      {
+        "role": "user",
+        "text": "This is perfect - really excited to use Kai for this! Thanks so much!",
+        "channel": "voice",
+        "ts": 1790383326.9781902
+      },
+      {
+        "role": "agent",
+        "text": "You're welcome! Enjoy, Maya.",
+        "channel": "voice",
+        "ts": 1790383327.6466408
+      }
+    ]
+  }
+]

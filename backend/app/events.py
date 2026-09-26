@@ -13,6 +13,7 @@ from .state import DEFAULT_AGENT_NAME, OnboardingState
 
 EventType = Literal[
     "name_skipped",
+    "agent_named",
     "call_accepted",
     "call_declined",
     "call_connected",
@@ -49,7 +50,21 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
         orch.add_event_turn(state, f"Skipped naming. Going by {DEFAULT_AGENT_NAME}.")
         return (
             f"the user tapped 'skip' on naming you, so you're {DEFAULT_AGENT_NAME} for now (they can rename you "
-            "anytime). Acknowledge in a few words and ask if they're up for a quick call or would rather text."
+            "anytime). Acknowledge in a few words and carry on with the conversation."
+        ), ui
+
+    if t == "agent_named":
+        # A tap on one of the name ideas (on the call screen or in chat): never collected by voice.
+        from . import validation as v
+
+        name, err = v.check_agent_name(str(data.get("name") or ""))
+        if name is None or (state.user_name and name.casefold() == state.user_name.casefold()):
+            return None, ui
+        state.agent_name, state.agent_name_defaulted = name, False
+        orch.add_event_turn(state, f"Named the assistant: {name}")
+        return (
+            f"they tapped to name you {name!r}. React warmly in a few words (you love it), then carry on "
+            "with the conversation where it was."
         ), ui
 
     if t in ("call_accepted", "callback"):
@@ -76,10 +91,10 @@ def apply_event(state: OnboardingState, t: str, data: dict[str, Any]) -> tuple[s
                 "or re-ask anything you already know."
             ), ui
         if not state.user_name:
+            me = f"with your name, {state.agent_name}," if state.agent_name else "as their new Persona (you don't have a name yet)"
             return (
-                "the call just connected and the user picked up. Like anyone answering the phone: say hi with "
-                "your name and ask who you're talking to, in your own words. That's the whole opener, one short "
-                "line."
+                f"the call just connected and the user picked up. Like anyone answering the phone: say hi {me} "
+                "and ask who you're talking to, in your own words. That's the whole opener, one short line."
             ), ui
         return (
             "the call just connected and the user picked up. Greet them by name, introduce yourself, and open "

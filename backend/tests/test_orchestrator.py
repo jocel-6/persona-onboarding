@@ -99,13 +99,12 @@ def test_call_flow_via_words():
 
 
 def test_director_note_priorities():
-    s = OnboardingState()
+    s = OnboardingState(call_status="offered", user_turns=1)  # typed instead of tapping Start call
     note = orch.directors_note(s, channel="text")
-    assert "name you, the assistant: optional" in note and "the call does that" in note  # their name waits for the call
-
-    s.agent_name = "Nova"
-    assert "quick two-minute call" in orch.directors_note(s, channel="text")
-
+    assert "tap Start call" in note and "give you a name" in note
+    s = OnboardingState(call_status="in_progress", channel="voice")
+    assert "tapping one of the ideas" in orch.directors_note(s, channel="voice")  # naming is a tap on the call
+    s = OnboardingState(agent_name="Nova")
     s.call_status = "in_progress"
     s.channel = "voice"
     note = orch.directors_note(s, channel="voice")
@@ -251,8 +250,8 @@ def test_graduation_is_not_offered_twice_in_a_row():
 
 
 def test_agent_naming_is_never_phrased_like_asking_their_name():
-    note = orch.directors_note(OnboardingState(), channel="text")
-    assert "name you, the assistant" in note and "Never 'what should I call you?'" in note
+    note = orch.directors_note(OnboardingState(call_status="declined", user_turns=1), channel="text")
+    assert "give you a name" in note and "Never 'what" in note
 
 
 def test_their_own_name_is_never_saved_as_the_agents_name():

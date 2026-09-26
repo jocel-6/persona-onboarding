@@ -80,17 +80,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Text only invites naming the assistant (optional). Everything else, starting with the
-# user's own name, is collected on the call (the brief: the call collects all but the agent's name).
+# The first screen is the call: nothing is asked in text. The call collects their name, what they
+# need and Gmail; naming the assistant is an optional tap on screen (the brief: everything but the
+# agent's name on the call). Typing instead of calling works too.
 OPENERS = [
-    "Hey! I'm your new Persona, your personal assistant. Want to give me a name? Totally optional.",
-    "Hi there! I'm your Persona, here for whatever you need. First, want to give me a name? No pressure.",
-    "Hey, welcome! I'm your new personal assistant. Want to name me? Or skip it and I'll go by Nova.",
+    "Hey! I'm your new Persona. Tap Start call and let's talk, it takes two minutes. Or just type here if you'd rather text.",
+    "Hi there, I'm your new Persona! Start a quick call and we'll get you set up in two minutes. Prefer texting? Just type.",
 ]
 
 # Events that, during a live voice call, should be spoken on the call rather than texted.
 SPOKEN_DURING_CALL = {
     "gmail_connected", "gmail_closed", "gmail_denied", "gmail_popup_opened", "graduate",
+    "agent_named", "name_skipped",
     "event_confirmed", "event_cancelled", "draft_confirmed", "draft_cancelled",
 }
 
@@ -347,12 +348,9 @@ def create_session(body: SessionIn | None = None) -> dict[str, Any]:
         {"role": "assistant", "content": [{"type": "text", "text": opener}]},
     ]
     state.transcript.append(Turn(role="agent", text=opener, channel="text"))
-    from . import orchestrator as orch
-
-    names = orch.name_ideas()
-    state.name_ideas_shown = True
+    state.call_status = "offered"
     store.save(state)
-    return {"state": state.public_view(), "ui": [{"type": "name_suggestions", "names": names}], "config": _config()}
+    return {"state": state.public_view(), "ui": [{"type": "show_call_offer"}], "config": _config()}
 
 
 @app.get("/api/sessions/{session_id}")

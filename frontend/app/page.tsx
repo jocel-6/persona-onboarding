@@ -527,7 +527,7 @@ export default function Onboarding() {
             {chips && !session?.agent_name && (
               <div className="chips">
                 {chips.map((n) => (
-                  <button key={n} className="chip" onClick={() => sendMessage(n)}>
+                  <button key={n} className="chip" onClick={() => sendEvent("agent_named", { name: n })}>
                     {n}
                   </button>
                 ))}
@@ -550,12 +550,12 @@ export default function Onboarding() {
             {callOffer && callView === "none" && (
               <div className="card">
                 <div>
-                  <strong>Quick 2-minute call?</strong>
-                  <p className="muted small">{agentName} calls you right here in the browser. Or keep texting, both work.</p>
+                  <strong>Let&apos;s talk: a quick 2-minute call</strong>
+                  <p className="muted small">Right here in the browser. Prefer texting? That works too.</p>
                 </div>
                 <div className="row">
                   <button className="primary" onClick={() => sendEvent("call_accepted")}>
-                    Call me
+                    Start call
                   </button>
                   <button className="ghost" onClick={() => { setCallOffer(false); void sendEvent("call_declined"); }}>
                     Keep texting
@@ -692,6 +692,21 @@ export default function Onboarding() {
           onReady={session?.wrapping_up && !graduated ? () => sendEvent("graduate") : undefined}
           gmail={
             <>
+              {chips && session && !session.agent_name && (
+                <div className="card name-ideas">
+                  <span className="small muted">Give me a name? Totally optional.</span>
+                  <div className="chips">
+                    {chips.map((n) => (
+                      <button key={n} className="chip" onClick={() => sendEvent("agent_named", { name: n })}>
+                        {n}
+                      </button>
+                    ))}
+                    <button className="chip subtle" onClick={() => sendEvent("name_skipped")}>
+                      Skip
+                    </button>
+                  </div>
+                </div>
+              )}
               {session && session.gmail_status === "connected" && session.insights?.length > 0 &&
                 !session.pending_event && !session.pending_draft && (
                 <InsightsCard

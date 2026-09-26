@@ -137,11 +137,12 @@ def name_ideas() -> list[str]:
 
 
 def name_ideas_due(state: OnboardingState) -> bool:
-    """Show the "name me" buttons once they've said who they are (or passed on it)."""
-    return (
-        not state.agent_name and not state.name_ideas_shown and state.channel == "text"
-        and state.call_status == "not_started" and (bool(state.user_name) or state.user_turns >= 1)
-    )
+    """Show the "name me" buttons once they've said who they are (on the call), or once they're texting."""
+    if state.agent_name or state.name_ideas_shown or state.graduated:
+        return False
+    if in_call(state):
+        return bool(state.user_name)
+    return state.user_turns >= 1
 
 
 def call_offer_due(state: OnboardingState) -> bool:
@@ -386,9 +387,7 @@ def after_turn(state: OnboardingState, progressed: bool) -> None:
 
 
 def start_call(state: OnboardingState) -> None:
-    if not state.agent_name:
-        state.agent_name = DEFAULT_AGENT_NAME
-        state.agent_name_defaulted = True
+    # No default name here: the call starts before they've named the assistant (a tap on the call screen).
     state.call_status = "ringing"
 
 
@@ -451,23 +450,27 @@ def _priority(state: OnboardingState) -> list[str]:
             "Don't repeat the suggestions."
         ]
 
-    if s.channel == "text" and not s.agent_name and not in_call(s):
-        return [
-            "You invited them to name you, the assistant: optional, and a few ideas are on their screen as buttons. "
-            "Never 'what should I call you?' (that sounds like asking their name), and don't ask their name here: "
-            "the call does that. If they pass on naming you, save "
-            f"agent_name={DEFAULT_AGENT_NAME!r}. As soon as you have a name, react to it in a few words and, in the "
-            "same reply, ask if they're up for a quick two-minute call right here in the browser, or would rather "
-            "keep texting. (If they happen to mention their own name, save it as user_name.)"
-        ]
-
-    if s.channel == "text" and s.call_status == "not_started":
-        name = s.agent_name or DEFAULT_AGENT_NAME
-        return [
-            f"React to the name {name!r} in a few words, then ask if they're up for a quick two-minute call "
-            "(you'll call them right here in the browser), or they can keep texting. Make both options feel fine. "
+    if s.channel == "text" and s.call_status == "offered" and s.user_turns <= 1:
+        # They typed instead of tapping Start call: the call is still one tap away, texting is fine too.
+        lines.append(
+            "They typed instead of starting the call. React to what they said, and in one light line mention "
+            "they can tap Start call for a quick two-minute chat, or keep texting here; both are fine. "
             "Their answer goes in wants_call."
-        ]
+        )
+
+    if not s.agent_name and not s.name_ideas_shown and not in_call(s) and s.user_turns >= 1:
+        lines.append(
+            "In this reply, introduce yourself as their personal assistant and invite them to give you a name if "
+            f"they'd like (optional; ideas appear as buttons; otherwise you're {DEFAULT_AGENT_NAME}). Never 'what "
+            "should I call you?', which sounds like asking their name."
+        )
+    elif not s.agent_name and in_call(s) and not s.name_ideas_shown:
+        lines.append(
+            "You don't have a name yet. When they tell you theirs, greet them by name, say you're their personal "
+            "assistant, and mention once that they can give you a name by tapping one of the ideas on their "
+            f"screen (optional; otherwise you're {DEFAULT_AGENT_NAME}). Never ask them to say a name for you "
+            "out loud, and never 'what should I call you?'."
+        )
 
     frustrated = s.sentiment == "frustrated"
     rushed = s.sentiment == "rushed" or s.short_answer_streak >= 2

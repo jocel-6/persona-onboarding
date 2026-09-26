@@ -18,9 +18,9 @@ def sse(resp):
 def test_full_flow_over_http():
     fake = FakeClient(
         [
-            ("Juno, love it! Up for a quick call, or keep texting?", {"agent_name": "Juno"}, "tool_use"),
-            ("Hey, it's Juno! Who am I talking to?", None, "end_turn"),
-            ("Nice to meet you, Maya!", {"user_name": "Maya"}, "tool_use"),
+            ("Hey! I'm your new Persona. Who am I talking to?", None, "end_turn"),
+            ("Hey Maya! I'm your personal assistant. Tap a name on your screen if you like.", {"user_name": "Maya"}, "tool_use"),
+            ("Juno, I love it!", None, "end_turn"),
             ("Looks like we got cut off! Want me to call back, or finish here?", None, "end_turn"),
             ("Welcome back, Maya!", None, "end_turn"),
         ]
@@ -28,26 +28,32 @@ def test_full_flow_over_http():
     main.brain.client = fake
     c = TestClient(main.app)
 
+    # The first screen is the call: nothing is asked in text.
     created = c.post("/api/sessions").json()
     sid = created["state"]["session_id"]
-    # Text only invites naming the assistant; their own name is asked on the call.
-    assert created["ui"][0]["type"] == "name_suggestions" and "Nova" not in created["ui"][0]["names"]
-    assert "name" in created["state"]["transcript"][0]["text"]
+    assert created["ui"] == [{"type": "show_call_offer"}] and created["state"]["call_status"] == "offered"
+    assert "call" in created["state"]["transcript"][0]["text"].lower()
     assert "messages" not in created["state"]  # raw history never leaves the server
-
-    evs = sse(c.post(f"/api/sessions/{sid}/messages", json={"text": "Juno"}))
-    assert {"type": "ui", "ui": {"type": "show_call_offer"}} in evs
-    assert evs[-2]["state"]["agent_name"] == "Juno" and evs[-1] == {"type": "end"}
 
     evs = sse(c.post(f"/api/sessions/{sid}/events", json={"type": "call_accepted"}))
     assert {"type": "ui", "ui": {"type": "ringing"}} in evs
-    assert len(fake.calls) == 1  # ringing needs no model turn
+    assert len(fake.calls) == 0  # ringing needs no model turn
 
     evs = sse(c.post(f"/api/sessions/{sid}/events", json={"type": "call_connected"}))
     assert evs[-2]["state"]["channel"] == "voice"
+    assert "new Persona" in json.dumps(fake.calls[-1]["messages"][-1])  # opener: no name yet, asks theirs
 
-    sse(c.post(f"/api/sessions/{sid}/messages", json={"text": "I'm Maya"}))
+    # Their name on the call; the "name me" buttons appear on the call screen right after.
+    evs = sse(c.post(f"/api/sessions/{sid}/messages", json={"text": "I'm Maya"}))
     assert "[voice] I'm Maya" in json.dumps(fake.calls[-1]["messages"][-1])
+    ideas = [e["ui"] for e in evs if e.get("type") == "ui" and e["ui"]["type"] == "name_suggestions"]
+    assert len(ideas) == 1 and "Nova" not in ideas[0]["names"]
+
+    # Naming the assistant is a tap, never a spoken answer.
+    evs = sse(c.post(f"/api/sessions/{sid}/events", json={"type": "agent_named", "data": {"name": "Juno"}}))
+    assert evs[-2]["state"]["agent_name"] == "Juno"
+    sse(c.post(f"/api/sessions/{sid}/events", json={"type": "agent_named", "data": {"name": "Maya"}}))
+    assert c.get(f"/api/sessions/{sid}").json()["state"]["agent_name"] == "Juno"  # never their own name
 
     evs = sse(c.post(f"/api/sessions/{sid}/events", json={"type": "hangup"}))
     st = evs[-2]["state"]

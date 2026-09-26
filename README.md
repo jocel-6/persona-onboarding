@@ -26,8 +26,8 @@ An adaptive voice + text onboarding agent. In the first five minutes it learns f
 | | SQLite | Sessions, Google tokens (separate table), per-turn metrics |
 | | Docker on Render | Hosting, with a persistent disk |
 | **Brain** | Anthropic Python SDK, Messages API (streaming, tool use, prompt caching) | One streaming Claude call per turn |
-| | Claude Haiku 4.5 | The conversation (fastest first word on a call) |
-| | Claude Sonnet 5 (structured output) | Background "deep insights" over the week; draft replies |
+| | Claude Haiku 4.5 | The conversation (fastest first word on a call), draft replies, and the simulated users in evals |
+| | Claude Sonnet 5 (structured output) | One background "deep insights" pass over the week after Gmail connects |
 | | Claude Opus 5 | Judge in the eval suite |
 | | Orchestrator (own code) | Mixed-initiative, frame-based dialogue management: slot table, validation, rules, the director's note |
 | **Voice** | Pipecat 1.11 | Real-time audio pipeline and turn-taking framework |
@@ -70,7 +70,7 @@ Automated voice call: `cd backend && .venv/bin/python scripts/call_test.py` (dia
 
 **The model handles language; code handles control flow.** This is mixed-initiative, frame-based dialogue management (hybrid open slot filling):
 
-| Code (`backend/app/orchestrator.py`) owns | Claude Sonnet 5 owns |
+| Code (`backend/app/orchestrator.py`) owns | Claude (Haiku 4.5 in production) owns |
 |---|---|
 | The slot table: what's filled, missing, corrected | Understanding messy, out-of-order, multi-part answers |
 | Validation of every saved value (`validation.py`) | Filling slots by calling `save_onboarding_info` |

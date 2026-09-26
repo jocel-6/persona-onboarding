@@ -12,7 +12,36 @@ An adaptive voice + text onboarding agent. In the first five minutes it learns f
 - **An eval harness with simulated adversarial users** (rushed exec, rambler, privacy skeptic, jailbreaker, …) graded by code and by Claude Opus 5, under a hard spend cap. It found and drove most of the fixes in [the engineering log](docs/ARCHITECTURE.md#engineering-log-real-bugs-found-and-how).
 - **Measured, not guessed:** ~1.0 s from end of your turn to the agent's voice (Haiku 4.5), every turn logged.
 
-**Live demo:** _link after deploying ([docs/DEPLOY.md](docs/DEPLOY.md))_ · **Video:** _2–3 min walkthrough ([script](docs/DEMO_SCRIPT.md))_
+**Live demo:** https://persona-onboarding-one.vercel.app · **Video:** _2–3 min walkthrough ([script](docs/DEMO_SCRIPT.md))_
+
+## Tech stack
+
+| Layer | Technology | What it does here |
+|---|---|---|
+| **Frontend** | Next.js 16, React, TypeScript | Chat, call screen, cards (name ideas, call offer, Connect Gmail, confirm cards, draft replies, recap), installable phone-first web app |
+| | Server-Sent Events | Streams the agent's words into the chat as they're written |
+| | Pipecat JS client + SmallWebRTC transport | The in-browser voice call (mic in, agent voice out) |
+| | Vercel | Hosting |
+| **Backend** | Python, FastAPI, Uvicorn | HTTP API and streaming |
+| | SQLite | Sessions, Google tokens (separate table), per-turn metrics |
+| | Docker on Render | Hosting, with a persistent disk |
+| **Brain** | Anthropic Python SDK, Messages API (streaming, tool use, prompt caching) | One streaming Claude call per turn |
+| | Claude Haiku 4.5 | The conversation (fastest first word on a call) |
+| | Claude Sonnet 5 (structured output) | Background "deep insights" over the week; draft replies |
+| | Claude Opus 5 | Judge in the eval suite |
+| | Orchestrator (own code) | Mixed-initiative, frame-based dialogue management: slot table, validation, rules, the director's note |
+| **Voice** | Pipecat 1.11 | Real-time audio pipeline and turn-taking framework |
+| | WebRTC + Metered TURN relay | Browser-to-server audio; the relay carries it through cloud firewalls |
+| | Deepgram Flux | Conversational speech-to-text with end-of-turn prediction (enables speculative replies) |
+| | Cartesia Sonic 3.6 | Streaming text-to-speech, tone-matched to the user's mood |
+| | Silero VAD, Smart Turn v3 | Voice activity detection; semantic end-of-turn (used with the Nova-3 engine option) |
+| | Hume (optional) | Tone-of-voice analysis |
+| | Twilio (optional) | Real phone calls and SMS recap |
+| **Google** | OAuth 2.0, Gmail API (`gmail.metadata`, `gmail.compose`), Calendar API (`calendar.events`) | Read subject lines/senders and upcoming events; add/move events and save drafts only on the user's tap |
+| **Quality** | pytest (72 tests, fake model client) | Rules, validation, events, turn-taking, Google edge cases |
+| | Eval harness (13 simulated users, Opus judge, spend ledger) | Conversation quality under a hard budget |
+| | Voice evals (synthesized speech over WebRTC) | Word error rate, names, latency |
+| | GitHub Actions | Tests, type check, lint, build on every push; optional eval quality gate |
 
 Docs: [Architecture and decisions](docs/ARCHITECTURE.md) · [Connecting real Gmail](docs/google-setup.md) · [Deploying](docs/DEPLOY.md) · the two plan PDFs in the repo root.
 
@@ -31,7 +60,7 @@ Or run the backend in Docker: `docker build -t persona-backend backend && docker
 
 Open http://localhost:3000. "Show state" in the top bar shows the slot table, signals, and per-turn latency. "Start over" resets the session.
 
-Tests: `cd backend && .venv/bin/python -m pytest` (63 tests, fake model client: no keys, no network). CI runs them plus the frontend typecheck, lint and build on every push (`.github/workflows/ci.yml`).
+Tests: `cd backend && .venv/bin/python -m pytest` (72 tests, fake model client: no keys, no network). CI runs them plus the frontend typecheck, lint and build on every push (`.github/workflows/ci.yml`).
 
 Evals: `cd backend && .venv/bin/python -m evals.run` (real API calls; ~$0.10 per conversation; capped by `EVAL_BUDGET_USD`, default $20).
 
@@ -80,7 +109,7 @@ browser mic ──WebRTC──▶ Deepgram STT ─▶ confidence tagger ─▶ u
 - **Backchannel filtering** (`voice/turntaking.py`): while the agent is talking, "mhm", "yeah", "right" (≤3 words, all listening noises, matched by sound so "Mhmm."/"mmhmm" count) are ignored and dropped from the next turn; "wait", "no", "actually", "hold on" always cut in. Two signals, whichever comes first: the words (from interim transcripts), or **duration: speech still going 0.6 s in is a real interruption.** The design suggested ~400 ms; a spoken "mhm" ran close to that in testing, so 0.6 s leaves margin. Measured: "wait, actually…" stops the agent 0.5–0.9 s after the user starts talking; "mhm" never did. When the agent isn't talking, "yeah" is an answer and starts a turn.
 - **Barge-in:** the agent stops mid-word, and its message in the history is cut to what you actually heard (`[cut off here: the user interrupted]`), so it never assumes you heard the rest.
 - **Audio annotations** the model sees (never shown in the transcript): `[you were interrupted…]`, `[low transcription confidence: Maya]` (→ a light "Maya, like M-A-Y-A?"), and silence events.
-- **Silence:** after 5 s a single gentle check-in; after 10 s more, an offer to switch to text; then quiet (no nagging).
+- **Silence:** after 8 s a single gentle check-in; after 15 s more, an offer to switch to text; then quiet (no nagging).
 - **Keyword boosting:** the agent's and user's names are sent to Deepgram as key terms.
 - **Streaming everywhere:** Claude streams tokens, TTS starts on the first sentence.
 - **Latency:** every voice turn logs end-of-turn → first token → first audio to `backend/data/latency.jsonl`. Measured with the automated caller (target from the tech design: ~1 s):
@@ -191,7 +220,7 @@ Across rounds 2–5, **Sonnet 5 averages ~69%, Haiku 4.5 ~46%**. With one conver
 | Asks what Gmail access means | Exact, honest answer: calendar + subject lines/senders, never bodies, revocable |
 | Talks over the agent / says "mhm" | Real interruptions stop it in ~0.5–0.9 s; backchannels don't |
 | Pauses mid-thought on the call | Semantic turn detection waits; uncertain waits are capped at 1.2 s |
-| Silence on the call | One check-in at 5 s, an offer to text at +10 s, then quiet |
+| Silence on the call | One check-in at 8 s, an offer to text at +15 s, then quiet |
 | Mic blocked, silent, or wrong device | Detected on the call screen with fixes and a "continue by typing" fallback |
 | Google popup blocked / closed / denied / permissions unticked | Each handled plainly; nothing claimed as connected unless the server says so |
 | Not a Google test user | Explained, with demo data or skipping offered |
